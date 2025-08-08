@@ -346,10 +346,8 @@ function initializeEchoBot() {
     uploadBtn?.addEventListener('click', uploadRecording);
     transcribeBtn?.addEventListener('click', transcribeRecording);
     echoBtn?.addEventListener('click', echoWithMurf);
-    if (echoVoiceSelect) {
-        // Try to pre-populate with Indian voices from Murf
-        preloadIndianVoices();
-    }
+    // Voice is selected server-side; hide client selector if present
+    if (echoVoiceSelect) echoVoiceSelect.closest('.voice-group')?.remove();
     copyTranscriptionBtn?.addEventListener('click', copyTranscription);
     transcribeAgainBtn?.addEventListener('click', transcribeRecording);
     newRecordingBtn?.addEventListener('click', resetRecording);
@@ -557,11 +555,7 @@ function initializeEchoBot() {
 
             const formData = new FormData();
             formData.append('audio_file', audioBlob, `recording-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.webm`);
-            // Optional voice selection
-            const chosenVoice = echoVoiceSelect?.value?.trim();
-            if (chosenVoice) {
-                formData.append('voice_id', chosenVoice);
-            }
+            // Server will pick the voice; no client voice parameter
 
             const response = await fetch('/tts/echo', {
                 method: 'POST',
@@ -594,30 +588,7 @@ function initializeEchoBot() {
         }
     }
 
-    async function preloadIndianVoices() {
-        try {
-            const res = await fetch('/api/voices');
-            const json = await res.json();
-            if (!res.ok || !json.success) return;
-            const voices = json.voices?.voices || json.voices || [];
-            const indianVoices = voices.filter(v => {
-                const lid = (v.languageId || v.language || '').toString().toLowerCase();
-                const name = (v.name || '').toString().toLowerCase();
-                return lid.includes('hi') || lid.includes('india') || name.includes('hindi') || name.includes('indian');
-            });
-            const top = indianVoices.slice(0, 6);
-            if (echoVoiceSelect && top.length) {
-                top.forEach(v => {
-                    const opt = document.createElement('option');
-                    opt.value = v.id || v.voiceId || v.code || v.name; // fallback choices
-                    opt.textContent = `${v.name || v.id || 'Voice'} — ${v.language || v.languageId || ''}`;
-                    echoVoiceSelect.appendChild(opt);
-                });
-            }
-        } catch (e) {
-            // ignore failures and keep default
-        }
-    }
+    // Removed client-side voice fetching; simplified per backend-only request
     
     async function transcribeRecording() {
         if (!audioBlob) {

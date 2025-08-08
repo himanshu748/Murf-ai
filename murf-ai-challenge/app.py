@@ -294,7 +294,7 @@ def format_file_size(size_bytes):
 @app.post("/tts/echo")
 async def tts_echo(
     audio_file: UploadFile = File(...),
-    voice_id: str = "en-IN-aditi",  # Prefer an Indian voice if provided/available
+    voice_id: str = "en-IN-aditi",  # Client value ignored; server will choose an Indian voice
     output_format: str = "mp3",
 ):
     """Echo Bot v2: Transcribe uploaded audio then synthesize with Murf voice.
@@ -342,6 +342,9 @@ async def tts_echo(
 
             logger.info(f"Transcription done. Text length: {len(transcription_text)}")
 
+            # Decide voice to use (server-side preference for Indian voice)
+            selected_voice_id = choose_indian_voice_id(os.getenv("MURF_API_KEY"), preferred=os.getenv("MURF_DEFAULT_VOICE_ID") or voice_id)
+
             # Generate TTS via Murf
             murf_url = "https://api.murf.ai/v1/speech/generate"
             headers = {
@@ -350,11 +353,11 @@ async def tts_echo(
             }
             payload = {
                 "text": transcription_text,
-                "voiceId": voice_id,
+                "voiceId": selected_voice_id,
                 "outputFormat": output_format,
             }
 
-            logger.info(f"Calling Murf generate with voice_id={voice_id}, output_format={output_format}")
+            logger.info(f"Calling Murf generate with voice_id={selected_voice_id}, output_format={output_format}")
             murf_response = requests.post(murf_url, headers=headers, json=payload, timeout=60)
             logger.info(f"Murf API status: {murf_response.status_code}")
 
@@ -372,7 +375,7 @@ async def tts_echo(
                 "success": True,
                 "audio_url": audio_url,
                 "transcript": transcription_text,
-                "voice_id": voice_id,
+                "voice_id": selected_voice_id,
                 "audio_length": murf_json.get("audioLengthInSeconds"),
                 "message": "Echo generated successfully",
             }
@@ -386,6 +389,46 @@ async def tts_echo(
     except Exception as e:
         logger.exception("Unhandled error in /tts/echo")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+def choose_indian_voice_id(murf_api_key: str, preferred: str | None = None) -> str:
+    """Choose an Indian voiceId. If preferred is provided, use it. Else try to fetch from Murf voices.
+    Fallbacks to a reasonable default.
+    """
+    try:
+        if preferred:
+            return preferred
+        if not murf_api_key:
+            return "en-IN-aditi"
+
+        url = "https://api.murf.ai/v1/speech/voices"
+        headers = {"api-key": murf_api_key, "Content-Type": "application/json"}
+        resp = requests.get(url, headers=headers, timeout=30)
+        if resp.status_code != 200:
+            return "en-IN-aditi"
+        data = resp.json()
+        voices = data.get("voices") if isinstance(data, dict) else data
+        if not isinstance(voices, list):
+            return "en-IN-aditi"
+
+        def is_indian(v: dict) -> bool:
+            lid = str(v.get("languageId") or v.get("language") or "").lower()
+            name = str(v.get("name") or "").lower()
+            return any(k in lid for k in ["en-in", "hi", "hi-in", "india"]) or any(k in name for k in ["hindi", "indian"])
+
+        indian = [v for v in voices if isinstance(v, dict) and is_indian(v)]
+        if indian:
+            # Prefer en-IN specifically if present
+            for v in indian:
+                lid = str(v.get("languageId") or v.get("language") or "").lower()
+                if "en-in" in lid:
+                    return str(v.get("id") or v.get("voiceId") or v.get("code") or v.get("name"))
+            v = indian[0]
+            return str(v.get("id") or v.get("voiceId") or v.get("code") or v.get("name"))
+
+        return "en-IN-aditi"
+    except Exception:
+        return "en-IN-aditi"
 
 if __name__ == "__main__":
     import uvicorn
