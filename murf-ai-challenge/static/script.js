@@ -410,7 +410,18 @@ function initializeEchoBot() {
                 recordingDuration.textContent = `Duration: ${duration}s`;
                 recordingSize.textContent = `Size: ${size}`;
                 
-                // Show result
+                // Show result and immediately preview the local recording to reduce perceived wait
+                try {
+                    if (echoAudioPlayer) {
+                        const prevUrl = echoAudioPlayer.dataset.localUrl;
+                        if (prevUrl) URL.revokeObjectURL(prevUrl);
+                        const localUrl = URL.createObjectURL(audioBlob);
+                        echoAudioPlayer.dataset.localUrl = localUrl;
+                        echoAudioPlayer.src = localUrl;
+                        echoAudioPlayer.play().catch(() => {});
+                    }
+                } catch (_) {}
+
                 showEchoResult();
                 // Immediately kick off Murf echo to reduce perceived latency
                 showUploadStatus("Generating Murf echo...", 'uploading');
@@ -430,12 +441,13 @@ function initializeEchoBot() {
             
             mediaRecorder.onerror = (event) => {
                 console.error("MediaRecorder error:", event);
-                showEchoError("Recording failed. Please try again.");
+                const msg = (event && event.error && event.error.name) ? `Recording error: ${event.error.name}` : 'Recording failed. Please try again.';
+                showEchoError(msg);
                 stream.getTracks().forEach(track => track.stop());
             };
             
             // Start recording with a smaller timeslice for quicker chunk availability
-            const TIMESLICE_MS = 300; // tweak between 250-500ms to balance CPU/network
+            const TIMESLICE_MS = 200; // tweak between 150-300ms to balance CPU/network
             mediaRecorder.start(TIMESLICE_MS);
             
             // Update UI
