@@ -316,6 +316,7 @@ function initializeEchoBot() {
     const uploadStatus = document.getElementById('upload-status');
     const uploadStatusText = document.getElementById('upload-status-text');
     const transcribeBtn = document.getElementById('transcribe-btn');
+    const echoBtn = document.getElementById('echo-btn');
     const echoVoiceSelect = document.getElementById('echoVoiceSelect');
     const transcriptionSection = document.getElementById('transcription-section');
     const transcriptionText = document.getElementById('transcription-text');
@@ -346,7 +347,7 @@ function initializeEchoBot() {
     downloadBtn?.addEventListener('click', downloadRecording);
     uploadBtn?.addEventListener('click', uploadRecording);
     transcribeBtn?.addEventListener('click', transcribeRecording);
-    // Echo reply removed for default minimal flow
+    echoBtn?.addEventListener('click', echoWithMurf);
     // Voice is selected server-side; hide client selector if present
     if (echoVoiceSelect) echoVoiceSelect.closest('.voice-group')?.remove();
     copyTranscriptionBtn?.addEventListener('click', copyTranscription);
@@ -382,7 +383,7 @@ function initializeEchoBot() {
                     if (MediaRecorder.isTypeSupported(t)) { chosenType = t; break; }
                 }
             }
-            const mrOptions = chosenType ? { mimeType: chosenType } : {};
+            const mrOptions = chosenType ? { mimeType: chosenType, audioBitsPerSecond: 32000, bitsPerSecond: 32000 } : { audioBitsPerSecond: 32000, bitsPerSecond: 32000 };
             mediaRecorder = new MediaRecorder(stream, mrOptions);
             
             audioChunks = [];
@@ -410,7 +411,9 @@ function initializeEchoBot() {
                 recordingSize.textContent = `Size: ${size}`;
                 
                 showEchoResult();
-                // Do not auto-trigger Murf echo; keep UI minimal and default
+                // Immediately kick off Murf echo to reduce perceived latency
+                showUploadStatus("Generating Murf echo...", 'uploading');
+                echoWithMurf();
                 
                 // Stop all tracks
                 stream.getTracks().forEach(track => track.stop());
@@ -432,7 +435,7 @@ function initializeEchoBot() {
             };
             
             // Start recording with a smaller timeslice for quicker chunk availability
-            const TIMESLICE_MS = 300; // balanced default; adjust if needed
+            const TIMESLICE_MS = 200; // tweak between 150-300ms to balance CPU/network
             mediaRecorder.start(TIMESLICE_MS);
             
             // Update UI
