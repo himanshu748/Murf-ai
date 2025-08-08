@@ -5,6 +5,8 @@ from fastapi.templating import Jinja2Templates
 from fastapi import Request
 from pydantic import BaseModel
 import requests
+import asyncio
+import httpx
 import os
 import uuid
 import math
@@ -327,9 +329,9 @@ async def tts_echo(
             temp_path = temp_file.name
 
         try:
-            # Transcribe
+            # Transcribe (offload blocking call)
             logger.info("Starting transcription for echo bot...")
-            transcript = transcriber.transcribe(temp_path)
+            transcript = await asyncio.to_thread(transcriber.transcribe, temp_path)
 
             if transcript.status == aai.TranscriptStatus.error:
                 error_msg = f"Transcription failed: {transcript.error}"
@@ -362,15 +364,17 @@ async def tts_echo(
             }
 
             logger.info(f"Calling Murf generate with voice_id={selected_voice_id}, output_format={output_format}")
-            murf_response = requests.post(murf_url, headers=headers, json=payload, timeout=60)
-            logger.info(f"Murf API status: {murf_response.status_code}")
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                murf_response = await client.post(murf_url, headers=headers, json=payload)
+                status = murf_response.status_code
+                logger.info(f"Murf API status: {status}")
 
-            if murf_response.status_code != 200:
-                detail = f"Murf API error (Status {murf_response.status_code}): {murf_response.text}"
-                logger.error(detail)
-                raise HTTPException(status_code=murf_response.status_code, detail=detail)
+                if status != 200:
+                    detail = f"Murf API error (Status {status}): {murf_response.text}"
+                    logger.error(detail)
+                    raise HTTPException(status_code=status, detail=detail)
 
-            murf_json = murf_response.json()
+                murf_json = murf_response.json()
             audio_url = murf_json.get("audioFile") or murf_json.get("audioUrl")
             if not audio_url:
                 raise HTTPException(status_code=500, detail="No audio URL found in Murf response")
