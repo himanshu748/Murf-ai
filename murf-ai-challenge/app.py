@@ -360,11 +360,11 @@ async def tts_echo(
 
             logger.info(f"Transcription done. Text length: {len(transcription_text)}")
 
-            # Decide voice to use (server-side preference for Indian male voice)
-            selected_voice_id = choose_indian_voice_id(
+            # Decide voice to use (server-side preference: male voice, Indian if available)
+            selected_voice_id = choose_male_voice_id(
                 os.getenv("MURF_API_KEY"),
                 preferred=os.getenv("MURF_DEFAULT_VOICE_ID") or voice_id,
-                prefer_gender="male",
+                prefer_indian=True,
             )
 
             # Generate TTS via Murf
@@ -452,10 +452,10 @@ async def tts_echo_fast(req: EchoFastRequest):
     if not text:
         raise HTTPException(status_code=400, detail="Text is required")
 
-    selected_voice_id = choose_indian_voice_id(
+    selected_voice_id = choose_male_voice_id(
         murf_api_key,
         preferred=os.getenv("MURF_DEFAULT_VOICE_ID") or req.voice_id or "",
-        prefer_gender="male",
+        prefer_indian=True,
     )
 
     try:
@@ -478,13 +478,13 @@ async def tts_echo_fast(req: EchoFastRequest):
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
-def choose_indian_voice_id(
+def choose_male_voice_id(
     murf_api_key: str,
     preferred: str | None = None,
-    prefer_gender: str | None = None,
+    prefer_indian: bool = True,
 ) -> str:
-    """Choose an Indian voiceId. If preferred is provided, use it. Else try to fetch from Murf voices.
-    Optionally prefer a specific gender. Fallbacks to a reasonable default.
+    """Choose a male Murf voice. If preferred is provided, use it.
+    If prefer_indian, try Indian male, else any male. Fallback to a generic male.
     """
     try:
         if preferred:
@@ -510,27 +510,21 @@ def choose_indian_voice_id(
         def gender_of(v: dict) -> str:
             return str(v.get("gender") or "").lower()
 
-        indian = [v for v in voices if isinstance(v, dict) and is_indian(v)]
-
-        # If a gender is preferred, try to pick that first
-        if prefer_gender and indian:
-            target = prefer_gender.lower()
-            indian_gendered = [v for v in indian if gender_of(v) in {target, target[:1]}]
-            if indian_gendered:
-                for v in indian_gendered:
+        # Try Indian male first if requested
+        if prefer_indian:
+            indian = [v for v in voices if isinstance(v, dict) and is_indian(v) and gender_of(v).startswith("m")]
+            if indian:
+                for v in indian:
                     lid = str(v.get("languageId") or v.get("language") or "").lower()
                     if "en-in" in lid:
                         return str(v.get("id") or v.get("voiceId") or v.get("code") or v.get("name"))
-                v = indian_gendered[0]
+                v = indian[0]
                 return str(v.get("id") or v.get("voiceId") or v.get("code") or v.get("name"))
-        if indian:
-            # Prefer en-IN specifically if present
-            for v in indian:
-                lid = str(v.get("languageId") or v.get("language") or "").lower()
-                if "en-in" in lid:
-                    return str(v.get("id") or v.get("voiceId") or v.get("code") or v.get("name"))
-            v = indian[0]
-            return str(v.get("id") or v.get("voiceId") or v.get("code") or v.get("name"))
+
+        # Else pick any male
+        male = [v for v in voices if isinstance(v, dict) and gender_of(v).startswith("m")]
+        if male:
+            return str(male[0].get("id") or male[0].get("voiceId") or male[0].get("code") or male[0].get("name"))
 
         return "en-US-cooper"
     except Exception:

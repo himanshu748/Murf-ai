@@ -29,7 +29,7 @@ A comprehensive journey through building voice-enabled applications and AI agent
   - Endpoint: `POST /tts/echo` (multipart FormData `audio_file`)
   - Transcription via AssemblyAI
   - TTS via Murf AI
-  - UI button “Murf Echo” to play Murf-generated audio and show transcript
+  - UI flow: Start Recording → Stop Recording → preview your recorded audio → click “Murf Echo” to transcribe with AssemblyAI and play back in a male Murf voice; transcript is shown under the player
 
 ## 🚀 Getting Started
 
@@ -104,6 +104,12 @@ Example:
 curl -X POST "http://localhost:8000/tts/echo" \
   -F "audio_file=@/path/to/recording.webm"
 ```
+
+### POST /api/transcribe/file
+Accepts an audio file and returns its transcription (AssemblyAI). No temp file saves; uploads directly to AssemblyAI.
+
+### POST /api/upload/audio
+Accepts an audio file, saves to `uploads/`, and returns file metadata (name, type, size).
 
 ## 🔧 Testing the TTS API
 
