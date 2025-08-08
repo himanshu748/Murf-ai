@@ -52,6 +52,27 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 _VOICE_CACHE: dict[str, dict] = {}
 _VOICE_CACHE_TTL_SECONDS = 6 * 60 * 60  # 6 hours
 
+# Shared HTTP client for connection pooling
+_http_client: Optional[httpx.AsyncClient] = None
+
+async def get_http_client() -> httpx.AsyncClient:
+    """Get or create shared HTTP client for connection pooling."""
+    global _http_client
+    if _http_client is None:
+        _http_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(10.0, connect=3.0),
+            limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
+        )
+    return _http_client
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Clean up HTTP client on shutdown."""
+    global _http_client
+    if _http_client:
+        await _http_client.aclose()
+        _http_client = None
+
 class TTSRequest(BaseModel):
     text: str
     voice_id: str = "en-US-cooper"  # Updated to a valid voice ID from Murf API
@@ -383,20 +404,23 @@ async def tts_echo(
                 "text": transcription_text,
                 "voiceId": selected_voice_id,
                 "outputFormat": output_format,
+                "speechRate": 100,  # Default speed for faster generation
+                "pitch": 0,  # Neutral pitch
+                "emphasis": 0,  # No emphasis for faster processing
             }
 
             logger.info(f"Calling Murf generate with voice_id={selected_voice_id}, output_format={output_format}")
-            async with httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=5.0)) as client:
-                murf_response = await client.post(murf_url, headers=headers, json=payload)
-                status = murf_response.status_code
-                logger.info(f"Murf API status: {status}")
+            client = await get_http_client()
+            murf_response = await client.post(murf_url, headers=headers, json=payload)
+            status = murf_response.status_code
+            logger.info(f"Murf API status: {status}")
 
-                if status != 200:
-                    detail = f"Murf API error (Status {status}): {murf_response.text}"
-                    logger.error(detail)
-                    raise HTTPException(status_code=status, detail=detail)
+            if status != 200:
+                detail = f"Murf API error (Status {status}): {murf_response.text}"
+                logger.error(detail)
+                raise HTTPException(status_code=status, detail=detail)
 
-                murf_json = murf_response.json()
+            murf_json = murf_response.json()
             audio_url = murf_json.get("audioFile") or murf_json.get("audioUrl")
             if not audio_url:
                 raise HTTPException(status_code=500, detail="No audio URL found in Murf response")
@@ -430,7 +454,7 @@ def upload_audio_to_assemblyai(audio_bytes: bytes) -> str:
         "Content-Type": "application/octet-stream",
     }
     try:
-        resp = requests.post("https://api.assemblyai.com/v2/upload", headers=headers, data=audio_bytes, timeout=60)
+        resp = requests.post("https://api.assemblyai.com/v2/upload", headers=headers, data=audio_bytes, timeout=30)
         if resp.status_code != 200:
             raise HTTPException(status_code=resp.status_code, detail=f"AssemblyAI upload error: {resp.text}")
         data = resp.json()
@@ -467,16 +491,23 @@ async def tts_echo_fast(req: EchoFastRequest):
     try:
         url = "https://api.murf.ai/v1/speech/generate"
         headers = {"api-key": murf_api_key, "Content-Type": "application/json"}
-        payload = {"text": text, "voiceId": selected_voice_id, "outputFormat": req.output_format}
-        async with httpx.AsyncClient(timeout=20.0) as client:
-            resp = await client.post(url, headers=headers, json=payload)
-            if resp.status_code != 200:
-                raise HTTPException(status_code=resp.status_code, detail=f"Murf error: {resp.text}")
-            data = resp.json()
-            audio_url = data.get("audioFile") or data.get("audioUrl")
-            if not audio_url:
-                raise HTTPException(status_code=500, detail="No audio URL in Murf response")
-            return {"success": True, "audio_url": audio_url, "voice_id": selected_voice_id}
+        payload = {
+            "text": text, 
+            "voiceId": selected_voice_id, 
+            "outputFormat": req.output_format,
+            "speechRate": 100,
+            "pitch": 0,
+            "emphasis": 0,
+        }
+        client = await get_http_client()
+        resp = await client.post(url, headers=headers, json=payload)
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail=f"Murf error: {resp.text}")
+        data = resp.json()
+        audio_url = data.get("audioFile") or data.get("audioUrl")
+        if not audio_url:
+            raise HTTPException(status_code=500, detail="No audio URL in Murf response")
+        return {"success": True, "audio_url": audio_url, "voice_id": selected_voice_id}
     except HTTPException:
         raise
     except Exception as e:

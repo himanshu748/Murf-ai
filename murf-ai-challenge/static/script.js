@@ -419,7 +419,7 @@ function initializeEchoBot() {
                     if (MediaRecorder.isTypeSupported(t)) { chosenType = t; break; }
                 }
             }
-            const mrOptions = chosenType ? { mimeType: chosenType, audioBitsPerSecond: 24000, bitsPerSecond: 24000 } : { audioBitsPerSecond: 24000, bitsPerSecond: 24000 };
+            const mrOptions = chosenType ? { mimeType: chosenType, audioBitsPerSecond: 16000, bitsPerSecond: 16000 } : { audioBitsPerSecond: 16000, bitsPerSecond: 16000 };
             mediaRecorder = new MediaRecorder(stream, mrOptions);
             
             audioChunks = [];
@@ -487,7 +487,7 @@ function initializeEchoBot() {
             };
             
             // Start recording with a smaller timeslice for quicker chunk availability
-            const TIMESLICE_MS = 150; // minimal latency; adjust if CPU-strained
+            const TIMESLICE_MS = 50; // ultra-low latency for fastest capture
             mediaRecorder.start(TIMESLICE_MS);
             
             // Update UI
@@ -786,10 +786,11 @@ function initializeEchoBot() {
     }
     
     function formatFileSize(bytes) {
-        if (bytes === 0) return '0 Bytes';
+        if (!bytes || bytes === 0 || isNaN(bytes)) return '0 Bytes';
         const k = 1024;
         const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1);
+        if (i < 0 || !isFinite(i)) return '0 Bytes';
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
 
