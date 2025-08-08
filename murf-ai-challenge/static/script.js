@@ -329,6 +329,8 @@ function initializeEchoBot() {
     let mediaRecorder = null;
     let audioChunks = [];
     let recordingStartTime = null;
+    let recordingTimerInterval = null;
+    let totalBytesRecorded = 0;
     let audioBlob = null;
     
     // Check if browser supports MediaRecorder
@@ -365,24 +367,38 @@ function initializeEchoBot() {
                 } 
             });
             
-            // Create MediaRecorder
-            mediaRecorder = new MediaRecorder(stream, {
-                mimeType: 'audio/webm;codecs=opus'
-            });
+            // Choose best supported MIME type for fast, compatible recording
+            const preferredTypes = [
+                'audio/webm;codecs=opus',
+                'audio/webm',
+                'audio/mp4;codecs=mp4a.40.2',
+                'audio/mp4'
+            ];
+            let chosenType = '';
+            if (window.MediaRecorder && typeof MediaRecorder.isTypeSupported === 'function') {
+                for (const t of preferredTypes) {
+                    if (MediaRecorder.isTypeSupported(t)) { chosenType = t; break; }
+                }
+            }
+            const mrOptions = chosenType ? { mimeType: chosenType } : {};
+            mediaRecorder = new MediaRecorder(stream, mrOptions);
             
             audioChunks = [];
             recordingStartTime = Date.now();
             
             // Set up event listeners for MediaRecorder
             mediaRecorder.ondataavailable = (event) => {
-                if (event.data.size > 0) {
+                if (event.data && event.data.size > 0) {
                     audioChunks.push(event.data);
+                    totalBytesRecorded += event.data.size;
+                    if (recordingSize) recordingSize.textContent = `Size: ${formatFileSize(totalBytesRecorded)}`;
                 }
             };
             
             mediaRecorder.onstop = () => {
                 // Create audio blob (do not auto-play the raw recording)
-                audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                const blobType = chosenType && chosenType.startsWith('audio/') ? chosenType : 'audio/webm';
+                audioBlob = new Blob(audioChunks, { type: blobType });
 
                 // Calculate duration and size
                 const duration = ((Date.now() - recordingStartTime) / 1000).toFixed(1);
@@ -397,6 +413,12 @@ function initializeEchoBot() {
                 // Stop all tracks
                 stream.getTracks().forEach(track => track.stop());
                 
+                // Clear timer
+                if (recordingTimerInterval) {
+                    clearInterval(recordingTimerInterval);
+                    recordingTimerInterval = null;
+                }
+
                 console.log("Recording completed successfully");
             };
             
@@ -406,12 +428,26 @@ function initializeEchoBot() {
                 stream.getTracks().forEach(track => track.stop());
             };
             
-            // Start recording
-            mediaRecorder.start();
+            // Start recording with a timeslice so ondataavailable fires periodically
+            mediaRecorder.start(1000); // emit data every 1s
             
             // Update UI
             setRecordingState(true);
             hideEchoError();
+
+            // Initialize counters and live UI updates
+            audioChunks = [];
+            totalBytesRecorded = 0;
+            if (recordingDuration) recordingDuration.textContent = `Duration: 0.0s`;
+            if (recordingSize) recordingSize.textContent = `Size: 0 Bytes`;
+
+            // Live timer
+            recordingTimerInterval = setInterval(() => {
+                if (recordingStartTime && recordingDuration) {
+                    const elapsed = ((Date.now() - recordingStartTime) / 1000).toFixed(1);
+                    recordingDuration.textContent = `Duration: ${elapsed}s`;
+                }
+            }, 200);
             
             console.log("Recording started successfully");
             
