@@ -383,7 +383,7 @@ function initializeEchoBot() {
                     if (MediaRecorder.isTypeSupported(t)) { chosenType = t; break; }
                 }
             }
-            const mrOptions = chosenType ? { mimeType: chosenType, audioBitsPerSecond: 64000, bitsPerSecond: 64000 } : { audioBitsPerSecond: 64000, bitsPerSecond: 64000 };
+            const mrOptions = chosenType ? { mimeType: chosenType, audioBitsPerSecond: 32000, bitsPerSecond: 32000 } : { audioBitsPerSecond: 32000, bitsPerSecond: 32000 };
             mediaRecorder = new MediaRecorder(stream, mrOptions);
             
             audioChunks = [];
@@ -412,6 +412,9 @@ function initializeEchoBot() {
                 
                 // Show result
                 showEchoResult();
+                // Immediately kick off Murf echo to reduce perceived latency
+                showUploadStatus("Generating Murf echo...", 'uploading');
+                echoWithMurf();
                 
                 // Stop all tracks
                 stream.getTracks().forEach(track => track.stop());

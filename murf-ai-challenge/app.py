@@ -354,6 +354,7 @@ async def tts_echo(
                 # If SDK doesn't support provided fields, ignore config
                 transcription_kwargs = {}
 
+            # Use a short-lived thread to avoid main loop blocking
             transcript = await asyncio.to_thread(transcriber.transcribe, temp_path, **transcription_kwargs)
 
             if transcript.status == aai.TranscriptStatus.error:
@@ -387,7 +388,7 @@ async def tts_echo(
             }
 
             logger.info(f"Calling Murf generate with voice_id={selected_voice_id}, output_format={output_format}")
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=5.0)) as client:
                 murf_response = await client.post(murf_url, headers=headers, json=payload)
                 status = murf_response.status_code
                 logger.info(f"Murf API status: {status}")
