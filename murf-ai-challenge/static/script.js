@@ -411,9 +411,6 @@ function initializeEchoBot() {
                 recordingSize.textContent = `Size: ${size}`;
                 
                 showEchoResult();
-                // Immediately kick off Murf echo to reduce perceived latency
-                showUploadStatus("Generating Murf echo...", 'uploading');
-                echoWithMurf();
                 
                 // Stop all tracks
                 stream.getTracks().forEach(track => track.stop());

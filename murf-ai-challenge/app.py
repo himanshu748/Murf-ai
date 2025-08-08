@@ -304,7 +304,7 @@ def format_file_size(size_bytes):
 @app.post("/tts/echo")
 async def tts_echo(
     audio_file: UploadFile = File(...),
-    voice_id: str = "en-IN-aditi",  # Client value ignored; server will choose an Indian voice
+    voice_id: str = "",  # Client value optional; server will choose an appropriate voice
     output_format: str = "mp3",
 ):
     """Echo Bot v2: Transcribe uploaded audio then synthesize with Murf voice.
@@ -490,17 +490,17 @@ def choose_indian_voice_id(
         if preferred:
             return preferred
         if not murf_api_key:
-            return "en-IN-aditi"
+            return "en-US-cooper"
 
         url = "https://api.murf.ai/v1/speech/voices"
         headers = {"api-key": murf_api_key, "Content-Type": "application/json"}
         resp = requests.get(url, headers=headers, timeout=30)
         if resp.status_code != 200:
-            return "en-IN-aditi"
+            return "en-US-cooper"
         data = resp.json()
         voices = data.get("voices") if isinstance(data, dict) else data
         if not isinstance(voices, list):
-            return "en-IN-aditi"
+            return "en-US-cooper"
 
         def is_indian(v: dict) -> bool:
             lid = str(v.get("languageId") or v.get("language") or "").lower()
@@ -532,9 +532,9 @@ def choose_indian_voice_id(
             v = indian[0]
             return str(v.get("id") or v.get("voiceId") or v.get("code") or v.get("name"))
 
-        return "en-IN-aditi"
+        return "en-US-cooper"
     except Exception:
-        return "en-IN-aditi"
+        return "en-US-cooper"
 
 if __name__ == "__main__":
     import uvicorn
