@@ -397,9 +397,15 @@ function initializeEchoBot() {
                 if (recordingDuration) recordingDuration.textContent = `Duration: 0.0s`;
                 if (recordingSize) recordingSize.textContent = `Size: 0 Bytes`;
                 recordingTimerInterval = setInterval(() => {
-                    if (recordingStartTime && recordingDuration) {
-                        const elapsed = ((Date.now() - recordingStartTime) / 1000).toFixed(1);
-                        recordingDuration.textContent = `Duration: ${elapsed}s`;
+                    if (recordingStartTime && recordingDuration && recordingStartTime > 0) {
+                        const elapsed = ((Date.now() - recordingStartTime) / 1000);
+                        if (isFinite(elapsed) && elapsed >= 0 && elapsed < 3600) { // Max 1 hour
+                            recordingDuration.textContent = `Duration: ${elapsed.toFixed(1)}s`;
+                        } else {
+                            recordingDuration.textContent = `Duration: 0.0s`;
+                        }
+                    } else {
+                        recordingDuration.textContent = `Duration: 0.0s`;
                     }
                 }, 200);
                 console.log("Safari recording started (WebAudio)");
@@ -439,8 +445,14 @@ function initializeEchoBot() {
                 const blobType = chosenType && chosenType.startsWith('audio/') ? chosenType : 'audio/webm';
                 audioBlob = new Blob(audioChunks, { type: blobType });
 
-                // Calculate duration and size
-                const duration = ((Date.now() - recordingStartTime) / 1000).toFixed(1);
+                // Calculate duration and size with infinity protection
+                let duration = '0.0';
+                if (recordingStartTime && recordingStartTime > 0) {
+                    const elapsed = (Date.now() - recordingStartTime) / 1000;
+                    if (isFinite(elapsed) && elapsed >= 0 && elapsed < 3600) {
+                        duration = elapsed.toFixed(1);
+                    }
+                }
                 const size = formatFileSize(audioBlob.size);
                 
                 recordingDuration.textContent = `Duration: ${duration}s`;
@@ -500,11 +512,17 @@ function initializeEchoBot() {
             if (recordingDuration) recordingDuration.textContent = `Duration: 0.0s`;
             if (recordingSize) recordingSize.textContent = `Size: 0 Bytes`;
 
-            // Live timer
+            // Live timer with robust infinity prevention
             recordingTimerInterval = setInterval(() => {
-                if (recordingStartTime && recordingDuration) {
-                    const elapsed = ((Date.now() - recordingStartTime) / 1000).toFixed(1);
-                    recordingDuration.textContent = `Duration: ${elapsed}s`;
+                if (recordingStartTime && recordingDuration && recordingStartTime > 0) {
+                    const elapsed = ((Date.now() - recordingStartTime) / 1000);
+                    if (isFinite(elapsed) && elapsed >= 0 && elapsed < 3600) { // Max 1 hour
+                        recordingDuration.textContent = `Duration: ${elapsed.toFixed(1)}s`;
+                    } else {
+                        recordingDuration.textContent = `Duration: 0.0s`;
+                    }
+                } else {
+                    recordingDuration.textContent = `Duration: 0.0s`;
                 }
             }, 200);
             
@@ -536,7 +554,13 @@ function initializeEchoBot() {
             // Encode WAV (PCM16, 16kHz) quickly
             const wavBlob = encodeWavFromFloat32(safariBuffers, 16000);
             audioBlob = wavBlob;
-            const duration = ((Date.now() - recordingStartTime) / 1000).toFixed(1);
+            let duration = '0.0';
+            if (recordingStartTime && recordingStartTime > 0) {
+                const elapsed = (Date.now() - recordingStartTime) / 1000;
+                if (isFinite(elapsed) && elapsed >= 0 && elapsed < 3600) {
+                    duration = elapsed.toFixed(1);
+                }
+            }
             const size = formatFileSize(audioBlob.size);
             recordingDuration.textContent = `Duration: ${duration}s`;
             recordingSize.textContent = `Size: ${size}`;
@@ -769,11 +793,20 @@ function initializeEchoBot() {
         audioBlob = null;
         audioChunks = [];
         recordingStartTime = null;
+        totalBytesRecorded = 0;
+        
+        if (recordingTimerInterval) {
+            clearInterval(recordingTimerInterval);
+            recordingTimerInterval = null;
+        }
         
         if (echoAudioPlayer.src) {
             URL.revokeObjectURL(echoAudioPlayer.src);
             echoAudioPlayer.src = '';
         }
+        
+        if (recordingDuration) recordingDuration.textContent = 'Duration: 0.0s';
+        if (recordingSize) recordingSize.textContent = 'Size: 0 Bytes';
         
         console.log("Recording reset successfully");
     }

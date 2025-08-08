@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 from pathlib import Path
 import logging
 import assemblyai as aai
+from contextlib import asynccontextmanager
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -37,21 +38,6 @@ else:
     # Fallback to default search path
     load_dotenv()
 
-app = FastAPI(title="Voice Agents API", description="30 Days of Voice Agents - Day 7")
-
-# Paths
-BASE_DIR = Path(__file__).resolve().parent
-TEMPLATES_DIR = BASE_DIR / "templates"
-STATIC_DIR = BASE_DIR / "static"
-
-# Mount static files for CSS and JS
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
-
-# Cache for Murf voice selection to avoid repeated /voices lookups
-_VOICE_CACHE: dict[str, dict] = {}
-_VOICE_CACHE_TTL_SECONDS = 6 * 60 * 60  # 6 hours
-
 # Shared HTTP client for connection pooling
 _http_client: Optional[httpx.AsyncClient] = None
 
@@ -65,13 +51,31 @@ async def get_http_client() -> httpx.AsyncClient:
         )
     return _http_client
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Clean up HTTP client on shutdown."""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for FastAPI app."""
+    # Startup
+    yield
+    # Shutdown
     global _http_client
     if _http_client:
         await _http_client.aclose()
         _http_client = None
+
+app = FastAPI(title="Voice Agents API", description="30 Days of Voice Agents - Day 7", lifespan=lifespan)
+
+# Paths
+BASE_DIR = Path(__file__).resolve().parent
+TEMPLATES_DIR = BASE_DIR / "templates"
+STATIC_DIR = BASE_DIR / "static"
+
+# Mount static files for CSS and JS
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+# Cache for Murf voice selection to avoid repeated /voices lookups
+_VOICE_CACHE: dict[str, dict] = {}
+_VOICE_CACHE_TTL_SECONDS = 6 * 60 * 60  # 6 hours
 
 class TTSRequest(BaseModel):
     text: str
