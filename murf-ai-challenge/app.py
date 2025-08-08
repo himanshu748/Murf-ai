@@ -77,6 +77,9 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 _VOICE_CACHE: dict[str, dict] = {}
 _VOICE_CACHE_TTL_SECONDS = 6 * 60 * 60  # 6 hours
 
+# Force fresh voice selection for debugging
+_VOICE_CACHE.clear()
+
 class TTSRequest(BaseModel):
     text: str
     voice_id: str = "en-US-cooper"  # Updated to a valid voice ID from Murf API
@@ -555,7 +558,12 @@ def choose_male_voice_id(
             return any(k in lid for k in ["en-in", "hi", "hi-in", "india"]) or any(k in name for k in ["hindi", "indian"])
 
         def gender_of(v: dict) -> str:
-            return str(v.get("gender") or "").lower()
+            gender = str(v.get("gender") or "").lower()
+            # Also check name for male indicators
+            name = str(v.get("name") or "").lower()
+            if "male" in name or "man" in name or "guy" in name:
+                return "male"
+            return gender
 
         # Try Indian male first if requested
         if prefer_indian:
@@ -566,21 +574,42 @@ def choose_male_voice_id(
                     if "en-in" in lid:
                         vid = str(v.get("id") or v.get("voiceId") or v.get("code") or v.get("name"))
                         _VOICE_CACHE[cache_key] = {"voice_id": vid, "ts": now}
+                        logger.info(f"Selected Indian male voice: {vid}")
                         return vid
                 v = indian[0]
                 vid = str(v.get("id") or v.get("voiceId") or v.get("code") or v.get("name"))
                 _VOICE_CACHE[cache_key] = {"voice_id": vid, "ts": now}
+                logger.info(f"Selected Indian male voice (fallback): {vid}")
                 return vid
 
-        # Else pick any male
+        # Else pick any male - be more aggressive in finding male voices
         male = [v for v in voices if isinstance(v, dict) and gender_of(v).startswith("m")]
         if male:
+            # Prefer voices with "male" in the name
+            male_named = [v for v in male if "male" in str(v.get("name") or "").lower()]
+            if male_named:
+                vid = str(male_named[0].get("id") or male_named[0].get("voiceId") or male_named[0].get("code") or male_named[0].get("name"))
+                _VOICE_CACHE[cache_key] = {"voice_id": vid, "ts": now}
+                logger.info(f"Selected male voice (named): {vid}")
+                return vid
+            # Fallback to first male
             vid = str(male[0].get("id") or male[0].get("voiceId") or male[0].get("code") or male[0].get("name"))
             _VOICE_CACHE[cache_key] = {"voice_id": vid, "ts": now}
+            logger.info(f"Selected male voice (first): {vid}")
             return vid
 
+        # Last resort: try to find any voice that might be male by name
+        potential_male = [v for v in voices if isinstance(v, dict) and any(word in str(v.get("name") or "").lower() for word in ["male", "man", "guy", "david", "john", "mike", "tom", "james"])]
+        if potential_male:
+            vid = str(potential_male[0].get("id") or potential_male[0].get("voiceId") or potential_male[0].get("code") or potential_male[0].get("name"))
+            _VOICE_CACHE[cache_key] = {"voice_id": vid, "ts": now}
+            logger.info(f"Selected potential male voice (by name): {vid}")
+            return vid
+
+        logger.info(f"Selected male voice: en-US-cooper (fallback)")
         return "en-US-cooper"
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error selecting male voice: {e}")
         return "en-US-cooper"
 
 if __name__ == "__main__":
