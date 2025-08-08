@@ -316,7 +316,6 @@ function initializeEchoBot() {
     const uploadStatus = document.getElementById('upload-status');
     const uploadStatusText = document.getElementById('upload-status-text');
     const transcribeBtn = document.getElementById('transcribe-btn');
-    const echoBtn = document.getElementById('echo-btn');
     const echoVoiceSelect = document.getElementById('echoVoiceSelect');
     const transcriptionSection = document.getElementById('transcription-section');
     const transcriptionText = document.getElementById('transcription-text');
@@ -347,7 +346,7 @@ function initializeEchoBot() {
     downloadBtn?.addEventListener('click', downloadRecording);
     uploadBtn?.addEventListener('click', uploadRecording);
     transcribeBtn?.addEventListener('click', transcribeRecording);
-    echoBtn?.addEventListener('click', echoWithMurf);
+    // Echo reply removed for default minimal flow
     // Voice is selected server-side; hide client selector if present
     if (echoVoiceSelect) echoVoiceSelect.closest('.voice-group')?.remove();
     copyTranscriptionBtn?.addEventListener('click', copyTranscription);
@@ -383,7 +382,7 @@ function initializeEchoBot() {
                     if (MediaRecorder.isTypeSupported(t)) { chosenType = t; break; }
                 }
             }
-            const mrOptions = chosenType ? { mimeType: chosenType, audioBitsPerSecond: 32000, bitsPerSecond: 32000 } : { audioBitsPerSecond: 32000, bitsPerSecond: 32000 };
+            const mrOptions = chosenType ? { mimeType: chosenType } : {};
             mediaRecorder = new MediaRecorder(stream, mrOptions);
             
             audioChunks = [];
@@ -410,22 +409,8 @@ function initializeEchoBot() {
                 recordingDuration.textContent = `Duration: ${duration}s`;
                 recordingSize.textContent = `Size: ${size}`;
                 
-                // Show result and immediately preview the local recording to reduce perceived wait
-                try {
-                    if (echoAudioPlayer) {
-                        const prevUrl = echoAudioPlayer.dataset.localUrl;
-                        if (prevUrl) URL.revokeObjectURL(prevUrl);
-                        const localUrl = URL.createObjectURL(audioBlob);
-                        echoAudioPlayer.dataset.localUrl = localUrl;
-                        echoAudioPlayer.src = localUrl;
-                        echoAudioPlayer.play().catch(() => {});
-                    }
-                } catch (_) {}
-
                 showEchoResult();
-                // Immediately kick off Murf echo to reduce perceived latency
-                showUploadStatus("Generating Murf echo...", 'uploading');
-                echoWithMurf();
+                // Do not auto-trigger Murf echo; keep UI minimal and default
                 
                 // Stop all tracks
                 stream.getTracks().forEach(track => track.stop());
@@ -447,7 +432,7 @@ function initializeEchoBot() {
             };
             
             // Start recording with a smaller timeslice for quicker chunk availability
-            const TIMESLICE_MS = 200; // tweak between 150-300ms to balance CPU/network
+            const TIMESLICE_MS = 300; // balanced default; adjust if needed
             mediaRecorder.start(TIMESLICE_MS);
             
             // Update UI
