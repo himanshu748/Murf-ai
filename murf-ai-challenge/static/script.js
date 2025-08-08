@@ -332,6 +332,12 @@ function initializeEchoBot() {
     let recordingTimerInterval = null;
     let totalBytesRecorded = 0;
     let audioBlob = null;
+    let safariCtx = null;
+    let safariProcessor = null;
+    let safariStream = null;
+    let safariSource = null;
+    let safariBuffers = [];
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
     
     // Check if browser supports MediaRecorder
     if (!navigator.mediaDevices || !window.MediaRecorder) {
@@ -370,6 +376,36 @@ function initializeEchoBot() {
                 } 
             });
             
+            if (isSafari) {
+                // Safari fallback: record PCM via WebAudio (faster preview; avoids MP4 moov delay)
+                safariCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+                safariStream = stream;
+                safariSource = safariCtx.createMediaStreamSource(stream);
+                safariProcessor = safariCtx.createScriptProcessor(4096, 1, 1);
+                safariBuffers = [];
+                safariProcessor.onaudioprocess = (e) => {
+                    const input = e.inputBuffer.getChannelData(0);
+                    safariBuffers.push(new Float32Array(input));
+                };
+                safariSource.connect(safariProcessor);
+                safariProcessor.connect(safariCtx.destination);
+                audioChunks = [];
+                recordingStartTime = Date.now();
+                setRecordingState(true);
+                hideEchoError();
+                totalBytesRecorded = 0;
+                if (recordingDuration) recordingDuration.textContent = `Duration: 0.0s`;
+                if (recordingSize) recordingSize.textContent = `Size: 0 Bytes`;
+                recordingTimerInterval = setInterval(() => {
+                    if (recordingStartTime && recordingDuration) {
+                        const elapsed = ((Date.now() - recordingStartTime) / 1000).toFixed(1);
+                        recordingDuration.textContent = `Duration: ${elapsed}s`;
+                    }
+                }, 200);
+                console.log("Safari recording started (WebAudio)");
+                return;
+            }
+
             // Choose best supported MIME type for fast, compatible recording
             const preferredTypes = [
                 'audio/webm;codecs=opus',
@@ -488,6 +524,40 @@ function initializeEchoBot() {
     }
     
     function stopRecording() {
+        if (isSafari) {
+            console.log("Stopping Safari WebAudio recording...");
+            try {
+                safariProcessor && safariProcessor.disconnect();
+                safariSource && safariSource.disconnect();
+                safariCtx && safariCtx.close();
+            } catch (_) {}
+            safariStream && safariStream.getTracks().forEach(t => t.stop());
+            setRecordingState(false);
+            // Encode WAV (PCM16, 16kHz) quickly
+            const wavBlob = encodeWavFromFloat32(safariBuffers, 16000);
+            audioBlob = wavBlob;
+            const duration = ((Date.now() - recordingStartTime) / 1000).toFixed(1);
+            const size = formatFileSize(audioBlob.size);
+            recordingDuration.textContent = `Duration: ${duration}s`;
+            recordingSize.textContent = `Size: ${size}`;
+            // Preview immediately
+            try {
+                if (echoAudioPlayer) {
+                    const prevUrl = echoAudioPlayer.dataset.localUrl;
+                    if (prevUrl) URL.revokeObjectURL(prevUrl);
+                    const localUrl = URL.createObjectURL(audioBlob);
+                    echoAudioPlayer.dataset.localUrl = localUrl;
+                    echoAudioPlayer.src = localUrl;
+                    echoAudioPlayer.load();
+                    echoAudioPlayer.play().catch(() => {});
+                }
+            } catch (_e) {}
+            if (recordingTimerInterval) { clearInterval(recordingTimerInterval); recordingTimerInterval = null; }
+            showEchoResult();
+            console.log("Safari recording completed");
+            return;
+        }
+
         if (mediaRecorder && mediaRecorder.state === 'recording') {
             console.log("Stopping recording...");
             mediaRecorder.stop();
@@ -721,6 +791,42 @@ function initializeEchoBot() {
         const sizes = ['Bytes', 'KB', 'MB', 'GB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    function encodeWavFromFloat32(chunks, sampleRate) {
+        // Flatten
+        let length = 0;
+        for (const c of chunks) length += c.length;
+        const data = new Float32Array(length);
+        let offset = 0;
+        for (const c of chunks) { data.set(c, offset); offset += c.length; }
+        // Convert to PCM16
+        const pcm = new DataView(new ArrayBuffer(44 + data.length * 2));
+        // RIFF header
+        writeString(pcm, 0, 'RIFF');
+        pcm.setUint32(4, 36 + data.length * 2, true);
+        writeString(pcm, 8, 'WAVE');
+        writeString(pcm, 12, 'fmt ');
+        pcm.setUint32(16, 16, true);
+        pcm.setUint16(20, 1, true); // PCM
+        pcm.setUint16(22, 1, true); // mono
+        pcm.setUint32(24, sampleRate, true);
+        pcm.setUint32(28, sampleRate * 2, true);
+        pcm.setUint16(32, 2, true);
+        pcm.setUint16(34, 16, true);
+        writeString(pcm, 36, 'data');
+        pcm.setUint32(40, data.length * 2, true);
+        let idx = 44;
+        for (let i = 0; i < data.length; i++) {
+            let s = Math.max(-1, Math.min(1, data[i]));
+            s = s < 0 ? s * 0x8000 : s * 0x7FFF;
+            pcm.setInt16(idx, s, true);
+            idx += 2;
+        }
+        return new Blob([pcm.buffer], { type: 'audio/wav' });
+    }
+    function writeString(dataview, offset, str) {
+        for (let i = 0; i < str.length; i++) dataview.setUint8(offset + i, str.charCodeAt(i));
     }
     
     function showUploadStatus(message, type = 'uploading') {
