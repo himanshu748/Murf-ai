@@ -243,42 +243,34 @@ async def transcribe_audio_file(audio_file: UploadFile = File(...)):
             raise HTTPException(status_code=400, detail="Only audio files are allowed")
         
         logger.info(f"Starting transcription for file: {audio_file.filename}")
-        
+
         # Read the audio file content
         audio_content = await audio_file.read()
-        
-        # Create a temporary file to pass to AssemblyAI
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.webm') as temp_file:
-            temp_file.write(audio_content)
-            temp_file_path = temp_file.name
-        
-        try:
-            # Transcribe the audio file
-            transcript = transcriber.transcribe(temp_file_path)
-            
-            if transcript.status == aai.TranscriptStatus.error:
-                error_msg = f"Transcription failed: {transcript.error}"
-                logger.error(error_msg)
-                raise HTTPException(status_code=500, detail=error_msg)
-            
-            # Extract the transcription text
-            transcription_text = transcript.text
-            
-            logger.info(f"Transcription completed successfully. Length: {len(transcription_text)} characters")
-            
-            return {
-                "success": True,
-                "transcription": transcription_text,
-                "confidence": transcript.confidence,
-                "audio_duration": transcript.audio_duration,
-                "words": len(transcript.words) if transcript.words else 0,
-                "message": "Audio transcribed successfully"
-            }
-            
-        finally:
-            # Clean up temporary file
-            if os.path.exists(temp_file_path):
-                os.unlink(temp_file_path)
+
+        # Upload bytes directly to AssemblyAI (no local temp file)
+        upload_url = upload_audio_to_assemblyai(audio_content)
+
+        # Transcribe via SDK (blocking) – acceptable as request is async overall
+        transcript = transcriber.transcribe(upload_url)
+
+        if transcript.status == aai.TranscriptStatus.error:
+            error_msg = f"Transcription failed: {transcript.error}"
+            logger.error(error_msg)
+            raise HTTPException(status_code=500, detail=error_msg)
+
+        # Extract the transcription text
+        transcription_text = transcript.text
+
+        logger.info(f"Transcription completed successfully. Length: {len(transcription_text)} characters")
+
+        return {
+            "success": True,
+            "transcription": transcription_text,
+            "confidence": transcript.confidence,
+            "audio_duration": transcript.audio_duration,
+            "words": len(transcript.words) if transcript.words else 0,
+            "message": "Audio transcribed successfully"
+        }
         
     except HTTPException:
         raise
@@ -326,36 +318,14 @@ async def tts_echo(
 
         logger.info(f"/tts/echo received file: name={audio_file.filename}, content_type={audio_file.content_type}")
 
-        # Read content and persist to a temp file for AssemblyAI SDK
+        # Read content; upload to AssemblyAI (no disk I/O)
         audio_content = await audio_file.read()
-        suffix = os.path.splitext(audio_file.filename or "recording")[1] or ".webm"
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
-            temp_file.write(audio_content)
-            temp_path = temp_file.name
 
         try:
-            # Transcribe (offload blocking call) with optional speed-focused config
+            # Transcribe via upload URL
             logger.info("Starting transcription for echo bot...")
-            transcription_kwargs = {}
-            # Allow env overrides to reduce latency
-            aai_lang = os.getenv("AAI_LANGUAGE_CODE")
-            aai_model = os.getenv("AAI_SPEECH_MODEL")  # e.g., 'nano' for faster
-            try:
-                config = None
-                if aai_lang or aai_model:
-                    cfg_kwargs = {}
-                    if aai_lang:
-                        cfg_kwargs["language_code"] = aai_lang
-                    if aai_model:
-                        cfg_kwargs["speech_model"] = aai_model
-                    config = aai.TranscriptionConfig(**cfg_kwargs)
-                    transcription_kwargs["config"] = config
-            except Exception:
-                # If SDK doesn't support provided fields, ignore config
-                transcription_kwargs = {}
-
-            # Use a short-lived thread to avoid main loop blocking
-            transcript = await asyncio.to_thread(transcriber.transcribe, temp_path, **transcription_kwargs)
+            upload_url = upload_audio_to_assemblyai(audio_content)
+            transcript = transcriber.transcribe(upload_url)
 
             if transcript.status == aai.TranscriptStatus.error:
                 error_msg = f"Transcription failed: {transcript.error}"
@@ -413,14 +383,38 @@ async def tts_echo(
             }
 
         finally:
-            if os.path.exists(temp_path):
-                os.unlink(temp_path)
+            pass
 
     except HTTPException:
         raise
     except Exception as e:
         logger.exception("Unhandled error in /tts/echo")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+def upload_audio_to_assemblyai(audio_bytes: bytes) -> str:
+    """Upload raw audio bytes to AssemblyAI and return its temporary upload URL."""
+    api_key = os.getenv("ASSEMBLYAI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="AssemblyAI API key not configured")
+    headers = {
+        "Authorization": api_key,
+        "Content-Type": "application/octet-stream",
+    }
+    try:
+        resp = requests.post("https://api.assemblyai.com/v2/upload", headers=headers, data=audio_bytes, timeout=60)
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail=f"AssemblyAI upload error: {resp.text}")
+        data = resp.json()
+        upload_url = data.get("upload_url")
+        if not upload_url:
+            raise HTTPException(status_code=500, detail="AssemblyAI upload failed: missing upload_url")
+        return upload_url
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("AssemblyAI upload failed")
+        raise HTTPException(status_code=500, detail=f"AssemblyAI upload failed: {str(e)}")
 
 
 @app.post("/tts/echo-fast")
