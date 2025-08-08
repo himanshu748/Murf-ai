@@ -342,8 +342,12 @@ async def tts_echo(
 
             logger.info(f"Transcription done. Text length: {len(transcription_text)}")
 
-            # Decide voice to use (server-side preference for Indian voice)
-            selected_voice_id = choose_indian_voice_id(os.getenv("MURF_API_KEY"), preferred=os.getenv("MURF_DEFAULT_VOICE_ID") or voice_id)
+            # Decide voice to use (server-side preference for Indian male voice)
+            selected_voice_id = choose_indian_voice_id(
+                os.getenv("MURF_API_KEY"),
+                preferred=os.getenv("MURF_DEFAULT_VOICE_ID") or voice_id,
+                prefer_gender="male",
+            )
 
             # Generate TTS via Murf
             murf_url = "https://api.murf.ai/v1/speech/generate"
@@ -391,9 +395,13 @@ async def tts_echo(
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
-def choose_indian_voice_id(murf_api_key: str, preferred: str | None = None) -> str:
+def choose_indian_voice_id(
+    murf_api_key: str,
+    preferred: str | None = None,
+    prefer_gender: str | None = None,
+) -> str:
     """Choose an Indian voiceId. If preferred is provided, use it. Else try to fetch from Murf voices.
-    Fallbacks to a reasonable default.
+    Optionally prefer a specific gender. Fallbacks to a reasonable default.
     """
     try:
         if preferred:
@@ -416,7 +424,22 @@ def choose_indian_voice_id(murf_api_key: str, preferred: str | None = None) -> s
             name = str(v.get("name") or "").lower()
             return any(k in lid for k in ["en-in", "hi", "hi-in", "india"]) or any(k in name for k in ["hindi", "indian"])
 
+        def gender_of(v: dict) -> str:
+            return str(v.get("gender") or "").lower()
+
         indian = [v for v in voices if isinstance(v, dict) and is_indian(v)]
+
+        # If a gender is preferred, try to pick that first
+        if prefer_gender and indian:
+            target = prefer_gender.lower()
+            indian_gendered = [v for v in indian if gender_of(v) in {target, target[:1]}]
+            if indian_gendered:
+                for v in indian_gendered:
+                    lid = str(v.get("languageId") or v.get("language") or "").lower()
+                    if "en-in" in lid:
+                        return str(v.get("id") or v.get("voiceId") or v.get("code") or v.get("name"))
+                v = indian_gendered[0]
+                return str(v.get("id") or v.get("voiceId") or v.get("code") or v.get("name"))
         if indian:
             # Prefer en-IN specifically if present
             for v in indian:
