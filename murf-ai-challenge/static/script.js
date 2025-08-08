@@ -410,6 +410,25 @@ function initializeEchoBot() {
                 recordingDuration.textContent = `Duration: ${duration}s`;
                 recordingSize.textContent = `Size: ${size}`;
                 
+                // Immediate local preview of the recorded audio
+                try {
+                    if (echoAudioPlayer) {
+                        // Revoke previous preview URL if present
+                        const prevUrl = echoAudioPlayer.dataset.localUrl;
+                        if (prevUrl) {
+                            URL.revokeObjectURL(prevUrl);
+                        }
+                        const localUrl = URL.createObjectURL(audioBlob);
+                        echoAudioPlayer.dataset.localUrl = localUrl;
+                        echoAudioPlayer.src = localUrl;
+                        // Force quick load and start
+                        echoAudioPlayer.load();
+                        echoAudioPlayer.play().catch(() => {});
+                    }
+                } catch (e) {
+                    console.warn('Local preview failed:', e);
+                }
+
                 showEchoResult();
                 
                 // Stop all tracks

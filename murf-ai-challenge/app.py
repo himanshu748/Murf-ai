@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi import Request
 from pydantic import BaseModel
+from typing import Optional
 import requests
 import asyncio
 import httpx
@@ -53,7 +54,7 @@ class TTSRequest(BaseModel):
 
 class EchoFastRequest(BaseModel):
     text: str
-    voice_id: str | None = None
+    voice_id: Optional[str] = None
     output_format: str = "mp3"
 
 @app.get("/", response_class=HTMLResponse)
@@ -480,7 +481,7 @@ async def tts_echo_fast(req: EchoFastRequest):
 
 def choose_male_voice_id(
     murf_api_key: str,
-    preferred: str | None = None,
+    preferred: Optional[str] = None,
     prefer_indian: bool = True,
 ) -> str:
     """Choose a male Murf voice. If preferred is provided, use it.
