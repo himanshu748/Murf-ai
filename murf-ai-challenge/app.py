@@ -13,6 +13,7 @@ import uuid
 import math
 import tempfile
 from datetime import datetime
+import time
 from dotenv import load_dotenv
 from pathlib import Path
 import logging
@@ -46,6 +47,10 @@ STATIC_DIR = BASE_DIR / "static"
 # Mount static files for CSS and JS
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+# Cache for Murf voice selection to avoid repeated /voices lookups
+_VOICE_CACHE: dict[str, dict] = {}
+_VOICE_CACHE_TTL_SECONDS = 6 * 60 * 60  # 6 hours
 
 class TTSRequest(BaseModel):
     text: str
@@ -336,7 +341,7 @@ async def tts_echo(
         try:
             # Transcribe via upload URL (prefer fastest model) in a worker thread
             logger.info("Starting transcription for echo bot...")
-            upload_url = upload_audio_to_assemblyai(audio_content)
+            upload_url = await asyncio.to_thread(upload_audio_to_assemblyai, audio_content)
             transcription_kwargs = {}
             try:
                 cfg_kwargs = {}
@@ -493,9 +498,15 @@ def choose_male_voice_id(
         if not murf_api_key:
             return "en-US-cooper"
 
+        cache_key = f"male_voice_indian_{prefer_indian}"
+        cached = _VOICE_CACHE.get(cache_key)
+        now = time.time()
+        if cached and (now - cached.get("ts", 0)) < _VOICE_CACHE_TTL_SECONDS:
+            return cached["voice_id"]
+
         url = "https://api.murf.ai/v1/speech/voices"
         headers = {"api-key": murf_api_key, "Content-Type": "application/json"}
-        resp = requests.get(url, headers=headers, timeout=30)
+        resp = requests.get(url, headers=headers, timeout=15)
         if resp.status_code != 200:
             return "en-US-cooper"
         data = resp.json()
@@ -518,14 +529,20 @@ def choose_male_voice_id(
                 for v in indian:
                     lid = str(v.get("languageId") or v.get("language") or "").lower()
                     if "en-in" in lid:
-                        return str(v.get("id") or v.get("voiceId") or v.get("code") or v.get("name"))
+                        vid = str(v.get("id") or v.get("voiceId") or v.get("code") or v.get("name"))
+                        _VOICE_CACHE[cache_key] = {"voice_id": vid, "ts": now}
+                        return vid
                 v = indian[0]
-                return str(v.get("id") or v.get("voiceId") or v.get("code") or v.get("name"))
+                vid = str(v.get("id") or v.get("voiceId") or v.get("code") or v.get("name"))
+                _VOICE_CACHE[cache_key] = {"voice_id": vid, "ts": now}
+                return vid
 
         # Else pick any male
         male = [v for v in voices if isinstance(v, dict) and gender_of(v).startswith("m")]
         if male:
-            return str(male[0].get("id") or male[0].get("voiceId") or male[0].get("code") or male[0].get("name"))
+            vid = str(male[0].get("id") or male[0].get("voiceId") or male[0].get("code") or male[0].get("name"))
+            _VOICE_CACHE[cache_key] = {"voice_id": vid, "ts": now}
+            return vid
 
         return "en-US-cooper"
     except Exception:
