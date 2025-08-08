@@ -317,6 +317,7 @@ function initializeEchoBot() {
     const uploadStatusText = document.getElementById('upload-status-text');
     const transcribeBtn = document.getElementById('transcribe-btn');
     const echoBtn = document.getElementById('echo-btn');
+    const echoVoiceSelect = document.getElementById('echoVoiceSelect');
     const transcriptionSection = document.getElementById('transcription-section');
     const transcriptionText = document.getElementById('transcription-text');
     const transcriptionConfidence = document.getElementById('transcription-confidence');
@@ -345,6 +346,10 @@ function initializeEchoBot() {
     uploadBtn?.addEventListener('click', uploadRecording);
     transcribeBtn?.addEventListener('click', transcribeRecording);
     echoBtn?.addEventListener('click', echoWithMurf);
+    if (echoVoiceSelect) {
+        // Try to pre-populate with Indian voices from Murf
+        preloadIndianVoices();
+    }
     copyTranscriptionBtn?.addEventListener('click', copyTranscription);
     transcribeAgainBtn?.addEventListener('click', transcribeRecording);
     newRecordingBtn?.addEventListener('click', resetRecording);
@@ -552,7 +557,11 @@ function initializeEchoBot() {
 
             const formData = new FormData();
             formData.append('audio_file', audioBlob, `recording-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.webm`);
-            // You can customize the voice by adding a query string, but we'll use default for now
+            // Optional voice selection
+            const chosenVoice = echoVoiceSelect?.value?.trim();
+            if (chosenVoice) {
+                formData.append('voice_id', chosenVoice);
+            }
 
             const response = await fetch('/tts/echo', {
                 method: 'POST',
@@ -582,6 +591,31 @@ function initializeEchoBot() {
         } catch (err) {
             console.error('Echo error:', err);
             showUploadStatus('Network error during echo. Please try again.', 'error');
+        }
+    }
+
+    async function preloadIndianVoices() {
+        try {
+            const res = await fetch('/api/voices');
+            const json = await res.json();
+            if (!res.ok || !json.success) return;
+            const voices = json.voices?.voices || json.voices || [];
+            const indianVoices = voices.filter(v => {
+                const lid = (v.languageId || v.language || '').toString().toLowerCase();
+                const name = (v.name || '').toString().toLowerCase();
+                return lid.includes('hi') || lid.includes('india') || name.includes('hindi') || name.includes('indian');
+            });
+            const top = indianVoices.slice(0, 6);
+            if (echoVoiceSelect && top.length) {
+                top.forEach(v => {
+                    const opt = document.createElement('option');
+                    opt.value = v.id || v.voiceId || v.code || v.name; // fallback choices
+                    opt.textContent = `${v.name || v.id || 'Voice'} — ${v.language || v.languageId || ''}`;
+                    echoVoiceSelect.appendChild(opt);
+                });
+            }
+        } catch (e) {
+            // ignore failures and keep default
         }
     }
     

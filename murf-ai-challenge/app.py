@@ -294,7 +294,7 @@ def format_file_size(size_bytes):
 @app.post("/tts/echo")
 async def tts_echo(
     audio_file: UploadFile = File(...),
-    voice_id: str = "en-US-cooper",
+    voice_id: str = "en-IN-aditi",  # Prefer an Indian voice if provided/available
     output_format: str = "mp3",
 ):
     """Echo Bot v2: Transcribe uploaded audio then synthesize with Murf voice.
