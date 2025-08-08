@@ -363,7 +363,10 @@ function initializeEchoBot() {
                 audio: {
                     echoCancellation: true,
                     noiseSuppression: true,
-                    autoGainControl: true
+                    autoGainControl: true,
+                    channelCount: 1,
+                    sampleRate: 16000,
+                    latency: 0
                 } 
             });
             
@@ -380,7 +383,7 @@ function initializeEchoBot() {
                     if (MediaRecorder.isTypeSupported(t)) { chosenType = t; break; }
                 }
             }
-            const mrOptions = chosenType ? { mimeType: chosenType } : {};
+            const mrOptions = chosenType ? { mimeType: chosenType, audioBitsPerSecond: 64000, bitsPerSecond: 64000 } : { audioBitsPerSecond: 64000, bitsPerSecond: 64000 };
             mediaRecorder = new MediaRecorder(stream, mrOptions);
             
             audioChunks = [];
@@ -428,8 +431,9 @@ function initializeEchoBot() {
                 stream.getTracks().forEach(track => track.stop());
             };
             
-            // Start recording with a timeslice so ondataavailable fires periodically
-            mediaRecorder.start(1000); // emit data every 1s
+            // Start recording with a smaller timeslice for quicker chunk availability
+            const TIMESLICE_MS = 300; // tweak between 250-500ms to balance CPU/network
+            mediaRecorder.start(TIMESLICE_MS);
             
             // Update UI
             setRecordingState(true);
