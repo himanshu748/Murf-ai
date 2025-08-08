@@ -51,6 +51,11 @@ class TTSRequest(BaseModel):
     voice_id: str = "en-US-cooper"  # Updated to a valid voice ID from Murf API
     output_format: str = "mp3"
 
+class EchoFastRequest(BaseModel):
+    text: str
+    voice_id: str | None = None
+    output_format: str = "mp3"
+
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     """Serve the main HTML page via Jinja templates"""
@@ -329,9 +334,27 @@ async def tts_echo(
             temp_path = temp_file.name
 
         try:
-            # Transcribe (offload blocking call)
+            # Transcribe (offload blocking call) with optional speed-focused config
             logger.info("Starting transcription for echo bot...")
-            transcript = await asyncio.to_thread(transcriber.transcribe, temp_path)
+            transcription_kwargs = {}
+            # Allow env overrides to reduce latency
+            aai_lang = os.getenv("AAI_LANGUAGE_CODE")
+            aai_model = os.getenv("AAI_SPEECH_MODEL")  # e.g., 'nano' for faster
+            try:
+                config = None
+                if aai_lang or aai_model:
+                    cfg_kwargs = {}
+                    if aai_lang:
+                        cfg_kwargs["language_code"] = aai_lang
+                    if aai_model:
+                        cfg_kwargs["speech_model"] = aai_model
+                    config = aai.TranscriptionConfig(**cfg_kwargs)
+                    transcription_kwargs["config"] = config
+            except Exception:
+                # If SDK doesn't support provided fields, ignore config
+                transcription_kwargs = {}
+
+            transcript = await asyncio.to_thread(transcriber.transcribe, temp_path, **transcription_kwargs)
 
             if transcript.status == aai.TranscriptStatus.error:
                 error_msg = f"Transcription failed: {transcript.error}"
@@ -396,6 +419,45 @@ async def tts_echo(
         raise
     except Exception as e:
         logger.exception("Unhandled error in /tts/echo")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@app.post("/tts/echo-fast")
+async def tts_echo_fast(req: EchoFastRequest):
+    """Lower-latency path if client already has text. Skips transcription and just generates TTS.
+    Useful for quick demos or when latency is a priority.
+    """
+    murf_api_key = os.getenv("MURF_API_KEY")
+    if not murf_api_key:
+        raise HTTPException(status_code=500, detail="Murf API key not configured.")
+
+    text = (req.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Text is required")
+
+    selected_voice_id = choose_indian_voice_id(
+        murf_api_key,
+        preferred=os.getenv("MURF_DEFAULT_VOICE_ID") or req.voice_id or "",
+        prefer_gender="male",
+    )
+
+    try:
+        url = "https://api.murf.ai/v1/speech/generate"
+        headers = {"api-key": murf_api_key, "Content-Type": "application/json"}
+        payload = {"text": text, "voiceId": selected_voice_id, "outputFormat": req.output_format}
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            resp = await client.post(url, headers=headers, json=payload)
+            if resp.status_code != 200:
+                raise HTTPException(status_code=resp.status_code, detail=f"Murf error: {resp.text}")
+            data = resp.json()
+            audio_url = data.get("audioFile") or data.get("audioUrl")
+            if not audio_url:
+                raise HTTPException(status_code=500, detail="No audio URL in Murf response")
+            return {"success": True, "audio_url": audio_url, "voice_id": selected_voice_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("/tts/echo-fast error")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
