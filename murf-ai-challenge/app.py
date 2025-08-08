@@ -250,8 +250,19 @@ async def transcribe_audio_file(audio_file: UploadFile = File(...)):
         # Upload bytes directly to AssemblyAI (no local temp file)
         upload_url = upload_audio_to_assemblyai(audio_content)
 
-        # Transcribe via SDK (blocking) – acceptable as request is async overall
-        transcript = transcriber.transcribe(upload_url)
+        # Prefer fastest model if available; offload blocking call
+        transcription_kwargs = {}
+        try:
+            cfg_kwargs = {}
+            cfg_kwargs['speech_model'] = os.getenv('AAI_SPEECH_MODEL') or 'nano'
+            if os.getenv('AAI_LANGUAGE_CODE'):
+                cfg_kwargs['language_code'] = os.getenv('AAI_LANGUAGE_CODE')
+            config = aai.TranscriptionConfig(**cfg_kwargs)
+            transcription_kwargs['config'] = config
+        except Exception:
+            transcription_kwargs = {}
+
+        transcript = await asyncio.to_thread(transcriber.transcribe, upload_url, **transcription_kwargs)
 
         if transcript.status == aai.TranscriptStatus.error:
             error_msg = f"Transcription failed: {transcript.error}"
@@ -322,10 +333,21 @@ async def tts_echo(
         audio_content = await audio_file.read()
 
         try:
-            # Transcribe via upload URL
+            # Transcribe via upload URL (prefer fastest model) in a worker thread
             logger.info("Starting transcription for echo bot...")
             upload_url = upload_audio_to_assemblyai(audio_content)
-            transcript = transcriber.transcribe(upload_url)
+            transcription_kwargs = {}
+            try:
+                cfg_kwargs = {}
+                cfg_kwargs['speech_model'] = os.getenv('AAI_SPEECH_MODEL') or 'nano'
+                if os.getenv('AAI_LANGUAGE_CODE'):
+                    cfg_kwargs['language_code'] = os.getenv('AAI_LANGUAGE_CODE')
+                config = aai.TranscriptionConfig(**cfg_kwargs)
+                transcription_kwargs['config'] = config
+            except Exception:
+                transcription_kwargs = {}
+
+            transcript = await asyncio.to_thread(transcriber.transcribe, upload_url, **transcription_kwargs)
 
             if transcript.status == aai.TranscriptStatus.error:
                 error_msg = f"Transcription failed: {transcript.error}"

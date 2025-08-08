@@ -383,7 +383,7 @@ function initializeEchoBot() {
                     if (MediaRecorder.isTypeSupported(t)) { chosenType = t; break; }
                 }
             }
-            const mrOptions = chosenType ? { mimeType: chosenType, audioBitsPerSecond: 32000, bitsPerSecond: 32000 } : { audioBitsPerSecond: 32000, bitsPerSecond: 32000 };
+            const mrOptions = chosenType ? { mimeType: chosenType, audioBitsPerSecond: 24000, bitsPerSecond: 24000 } : { audioBitsPerSecond: 24000, bitsPerSecond: 24000 };
             mediaRecorder = new MediaRecorder(stream, mrOptions);
             
             audioChunks = [];
@@ -435,7 +435,7 @@ function initializeEchoBot() {
             };
             
             // Start recording with a smaller timeslice for quicker chunk availability
-            const TIMESLICE_MS = 200; // tweak between 150-300ms to balance CPU/network
+            const TIMESLICE_MS = 150; // minimal latency; adjust if CPU-strained
             mediaRecorder.start(TIMESLICE_MS);
             
             // Update UI
