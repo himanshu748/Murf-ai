@@ -1,0 +1,94 @@
+2025-08-15 16:04:49,316 - main - INFO - 🚀 Starting Murf AI Conversational Bot
+2025-08-15 16:04:49,316 - services.stt_service - INFO - STT Service initialized with language: en-US
+2025-08-15 16:04:49,316 - services.tts_service - INFO - TTS Service initialized with voice: en-US-aileen
+2025-08-15 16:04:49,316 - services.llm_service - INFO - LLM Service initialized with model: llama-3.1-sonar-small-128k-online
+2025-08-15 16:04:49,316 - main - INFO - ✅ All services initialized successfully
+2025-08-15 16:04:49,316 - main - INFO - 📁 Uploads directory ready: uploads
+2025-08-15 16:04:55,994 - main - INFO - 🛑 Shutting down Murf AI Conversational Bot
+2025-08-15 16:05:07,641 - main - INFO - 🚀 Starting Murf AI Conversational Bot
+2025-08-15 16:05:07,641 - services.stt_service - INFO - STT Service initialized with language: en-US
+2025-08-15 16:05:07,641 - services.tts_service - INFO - TTS Service initialized with voice: en-US-aileen
+2025-08-15 16:05:07,641 - services.llm_service - INFO - LLM Service initialized with model: llama-3.1-sonar-small-128k-online
+2025-08-15 16:05:07,641 - main - INFO - ✅ All services initialized successfully
+2025-08-15 16:05:07,641 - main - INFO - 📁 Uploads directory ready: uploads
+2025-08-15 16:05:13,612 - main - INFO - 🛑 Shutting down Murf AI Conversational Bot
+2025-08-15 16:05:31,384 - main - INFO - 🚀 Starting Murf AI Conversational Bot
+2025-08-15 16:05:31,384 - services.stt_service - INFO - STT Service initialized with language: en-US
+2025-08-15 16:05:31,384 - services.tts_service - INFO - TTS Service initialized with voice: en-US-aileen
+2025-08-15 16:05:31,384 - services.llm_service - INFO - LLM Service initialized with model: llama-3.1-sonar-small-128k-online
+2025-08-15 16:05:31,384 - main - INFO - ✅ All services initialized successfully
+2025-08-15 16:05:31,384 - main - INFO - 📁 Uploads directory ready: uploads
+2025-08-15 16:05:34,413 - main - INFO - 🛑 Shutting down Murf AI Conversational Bot
+2025-08-15 16:05:53,553 - main - INFO - 🚀 Starting Murf AI Conversational Bot
+2025-08-15 16:05:53,553 - services.stt_service - INFO - STT Service initialized with language: en-US
+2025-08-15 16:05:53,553 - services.tts_service - INFO - TTS Service initialized with voice: en-US-aileen
+2025-08-15 16:05:53,553 - services.llm_service - INFO - LLM Service initialized with model: llama-3.1-sonar-small-128k-online
+2025-08-15 16:05:53,553 - main - INFO - ✅ All services initialized successfully
+2025-08-15 16:05:53,553 - main - INFO - 📁 Uploads directory ready: uploads
+2025-08-15 16:05:57,925 - main - INFO - 🛑 Shutting down Murf AI Conversational Bot
+2025-08-15 16:09:20,671 - main - INFO - 🚀 Starting Murf AI Conversational Bot
+2025-08-15 16:09:20,671 - services.stt_service - INFO - STT Service initialized with language: en-US
+2025-08-15 16:09:20,671 - services.tts_service - INFO - TTS Service initialized with voice: en-US-aileen
+2025-08-15 16:09:20,671 - services.llm_service - INFO - LLM Service initialized with model: llama-3.1-sonar-small-128k-online
+2025-08-15 16:09:20,671 - main - INFO - ✅ All services initialized successfully
+2025-08-15 16:09:20,671 - main - INFO - 📁 Uploads directory ready: uploads
+2025-08-15 16:09:26,295 - main - INFO - 🛑 Shutting down Murf AI Conversational Bot
+2025-08-15 16:09:47,389 - services.stt_service - INFO - STT Service initialized with language: en-US
+2025-08-15 16:09:47,389 - services.tts_service - INFO - TTS Service initialized with voice: en-US-aileen
+2025-08-15 16:09:47,390 - services.llm_service - INFO - LLM Service initialized with model: llama-3.1-sonar-small-128k-online
+2025-08-15 16:10:11,609 - main - INFO - 🚀 Starting Murf AI Conversational Bot
+2025-08-15 16:10:11,609 - services.stt_service - INFO - STT Service initialized with language: en-US
+2025-08-15 16:10:11,609 - services.tts_service - INFO - TTS Service initialized with voice: en-US-aileen
+2025-08-15 16:10:11,609 - services.llm_service - INFO - LLM Service initialized with model: llama-3.1-sonar-small-128k-online
+2025-08-15 16:10:11,609 - main - INFO - ✅ All services initialized successfully
+2025-08-15 16:10:11,609 - main - INFO - 📁 Uploads directory ready: uploads
+2025-08-15 16:10:32,113 - main - INFO - 🛑 Shutting down Murf AI Conversational Bot
+2025-08-15 16:11:57,817 - main - INFO - 🚀 Starting Murf AI Conversational Bot
+2025-08-15 16:11:57,817 - services.stt_service - INFO - STT Service initialized with language: en-US
+2025-08-15 16:11:57,817 - services.tts_service - INFO - TTS Service initialized with voice: en-US-aileen
+2025-08-15 16:11:57,817 - services.llm_service - INFO - LLM Service initialized with model: llama-3.1-sonar-small-128k-online
+2025-08-15 16:11:57,817 - main - INFO - ✅ All services initialized successfully
+2025-08-15 16:11:57,817 - main - INFO - 📁 Uploads directory ready: uploads
+2025-08-15 16:12:03,796 - main - INFO - 🛑 Shutting down Murf AI Conversational Bot
+2025-08-15 16:12:21,640 - __main__ - INFO - 🚀 Starting server on 0.0.0.0:8000
+2025-08-15 16:12:58,802 - __main__ - INFO - 🚀 Starting server on 0.0.0.0:8000
+2025-08-15 16:12:59,001 - main - INFO - 🚀 Starting Murf AI Conversational Bot
+2025-08-15 16:12:59,001 - services.stt_service - INFO - STT Service initialized with language: en-US
+2025-08-15 16:12:59,001 - services.tts_service - INFO - TTS Service initialized with voice: en-US-aileen
+2025-08-15 16:12:59,001 - services.llm_service - INFO - LLM Service initialized with model: llama-3.1-sonar-small-128k-online
+2025-08-15 16:12:59,001 - main - INFO - ✅ All services initialized successfully
+2025-08-15 16:12:59,001 - main - INFO - 📁 Uploads directory ready: uploads
+2025-08-15 16:13:22,643 - main - INFO - 🛑 Shutting down Murf AI Conversational Bot
+2025-08-15 16:15:36,858 - __main__ - INFO - 🚀 Starting server on 0.0.0.0:8000
+2025-08-15 16:15:37,056 - main - INFO - 🚀 Starting Murf AI Conversational Bot
+2025-08-15 16:15:37,056 - services.stt_service - INFO - STT Service initialized with language: en-US
+2025-08-15 16:15:37,056 - services.tts_service - INFO - TTS Service initialized with voice: en-US-aileen
+2025-08-15 16:15:37,056 - services.llm_service - INFO - LLM Service initialized with model: llama-3.1-sonar-small-128k-online
+2025-08-15 16:15:37,056 - main - INFO - ✅ All services initialized successfully
+2025-08-15 16:15:37,057 - main - INFO - 📁 Uploads directory ready: uploads
+2025-08-15 16:16:39,682 - main - INFO - 🛑 Shutting down Murf AI Conversational Bot
+2025-08-15 16:16:58,312 - __main__ - INFO - 🚀 Starting server on 0.0.0.0:8000
+2025-08-15 16:16:58,506 - main - INFO - 🚀 Starting Murf AI Conversational Bot
+2025-08-15 16:16:58,506 - services.stt_service - INFO - STT Service initialized with language: en-US
+2025-08-15 16:16:58,506 - services.tts_service - INFO - TTS Service initialized with voice: en-US-aileen
+2025-08-15 16:16:58,506 - services.llm_service - INFO - LLM Service initialized with model: llama-3.1-sonar-small-128k-online
+2025-08-15 16:16:58,506 - main - INFO - ✅ All services initialized successfully
+2025-08-15 16:16:58,506 - main - INFO - 📁 Uploads directory ready: uploads
+2025-08-15 16:18:01,333 - main - INFO - 🛑 Shutting down Murf AI Conversational Bot
+2025-08-15 16:26:56,646 - __main__ - INFO - 🚀 Starting server on 0.0.0.0:8000
+2025-08-15 16:26:56,857 - main - INFO - 🚀 Starting Murf AI Conversational Bot
+2025-08-15 16:26:56,857 - services.stt_service - INFO - STT Service initialized with language: en-US
+2025-08-15 16:26:56,857 - services.tts_service - INFO - TTS Service initialized with voice: en-US-aileen
+2025-08-15 16:26:56,857 - services.llm_service - INFO - LLM Service initialized with model: llama-3.1-sonar-small-128k-online
+2025-08-15 16:26:56,857 - main - INFO - ✅ All services initialized successfully
+2025-08-15 16:26:56,857 - main - INFO - 📁 Uploads directory ready: uploads
+2025-08-15 16:27:18,873 - services.tts_service - ERROR - Failed to get voices: No module named 'aiohttp'
+2025-08-15 16:27:32,923 - main - INFO - 🛑 Shutting down Murf AI Conversational Bot
+2025-08-15 16:35:25,318 - __main__ - INFO - 🚀 Starting server on 0.0.0.0:8000
+2025-08-15 16:35:25,544 - main - INFO - 🚀 Starting Murf AI Conversational Bot
+2025-08-15 16:35:25,544 - services.stt_service - INFO - STT Service initialized with language: en-US
+2025-08-15 16:35:25,544 - services.tts_service - INFO - TTS Service initialized with voice: en-US-aileen
+2025-08-15 16:35:25,544 - services.llm_service - INFO - LLM Service initialized with model: llama-3.1-sonar-small-128k-online
+2025-08-15 16:35:25,544 - main - INFO - ✅ All services initialized successfully
+2025-08-15 16:35:25,544 - main - INFO - 📁 Uploads directory ready: uploads
+2025-08-15 16:35:44,840 - main - INFO - 🛑 Shutting down Murf AI Conversational Bot

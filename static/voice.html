@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎤 AI Voice Assistant</title>
+    <link rel="stylesheet" href="/static/voice-mode.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 100%);
+            color: #f1f5f9;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        
+        .app-container {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .header {
+            padding: 1rem 2rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            background: rgba(0, 0, 0, 0.2);
+        }
+        
+        .header-content {
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        
+        .logo h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .main-content {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+        
+        .voice-container {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 3rem 2rem;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+        }
+        
+        .footer {
+            padding: 1rem;
+            text-align: center;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            color: rgba(241, 245, 249, 0.6);
+            font-size: 0.875rem;
+        }
+        
+        .tech-badges {
+            display: flex;
+            gap: 0.5rem;
+            justify-content: center;
+            margin-top: 0.5rem;
+        }
+        
+        .tech-badge {
+            padding: 0.25rem 0.75rem;
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        
+        @media (max-width: 768px) {
+            .header {
+                padding: 1rem;
+            }
+            
+            .main-content {
+                padding: 1rem;
+            }
+            
+            .voice-container {
+                padding: 2rem 1rem;
+                border-radius: 16px;
+            }
+            
+            .tech-badges {
+                flex-wrap: wrap;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: #3b82f6;">
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                        <line x1="12" y1="19" x2="12" y2="23"></line>
+                        <line x1="8" y1="23" x2="16" y2="23"></line>
+                    </svg>
+                    <h1>AI Voice Assistant</h1>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="voice-container">
+                <!-- Voice Interface will be inserted here by JavaScript -->
+                <div class="keyboard-hint">
+                    Press <code>Space</code> to speak or <code>Escape</code> to stop
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div>🏆 Murf AI Challenge - 14 Days Complete Journey</div>
+            <div class="tech-badges">
+                <span class="tech-badge">Murf AI TTS</span>
+                <span class="tech-badge">AssemblyAI STT</span>
+                <span class="tech-badge">LLM Integration</span>
+                <span class="tech-badge">FastAPI</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Voice Mode Script -->
+    <script src="/static/perplexity-voice.js"></script>
+</body>
+</html>
