@@ -1,6 +1,161 @@
-# 🎤 30 Days of AI Agent Challenge by Murf AI
+# 🎤 Murf AI Conversational Bot
 
-A comprehensive learning journey building sophisticated AI-powered conversational agents from scratch. This repository documents the progressive development of voice-enabled AI systems, combining cutting-edge Speech-to-Text (STT), Large Language Model (LLM), and Text-to-Speech (TTS) technologies.
+A sophisticated AI-powered conversational agent with voice capabilities, built with FastAPI and modern web technologies. This project combines Murf AI (TTS), AssemblyAI (STT), and Perplexity AI (LLM) to create a seamless voice interaction experience.
+
+## ✨ Key Features
+
+### 🎙️ Voice Interaction
+- Real-time speech-to-text and text-to-speech
+- Multiple voice options with preview
+- Noise cancellation and audio processing
+- Session-based conversation memory
+
+### 🎨 Modern UI
+- Royal Black theme with elegant gold accents
+- Responsive design for all devices
+- Real-time audio visualization
+- Interactive chat interface
+
+### 🛠️ Technical Highlights
+- FastAPI backend with WebSocket support
+- Modular service architecture
+- Comprehensive error handling
+- Session persistence
+- Rate limiting and security
+
+## 🚀 Getting Started
+
+### Prerequisites
+- Python 3.8+
+- Node.js 16+ (for frontend development)
+- API keys for Murf AI, AssemblyAI, and Perplexity AI
+
+### Installation
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/yourusername/murf-ai.git
+   cd murf-ai
+   ```
+
+2. Create and activate a virtual environment:
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   ```
+
+3. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. Set up environment variables:
+   Create a `.env` file in the root directory with your API keys:
+   ```
+   MURF_API_KEY=your_murf_api_key
+   ASSEMBLYAI_API_KEY=your_assemblyai_api_key
+   PERPLEXITY_API_KEY=your_perplexity_api_key
+   ```
+
+### Running the Application
+
+1. Start the FastAPI server:
+   ```bash
+   uvicorn main:app --reload
+   ```
+
+2. Open your browser and navigate to:
+   ```
+   http://localhost:8000
+   ```
+
+## 🏗️ Project Structure
+
+```
+murf-ai/
+├── .env                       # Environment variables
+├── main.py                   # FastAPI application
+├── requirements.txt          # Python dependencies
+├── static/                   # Frontend assets
+│   ├── index.html           # Main interface
+│   ├── voice.html           # Voice-only interface
+│   ├── script.js            # Main JavaScript
+│   ├── voice-mode.js        # Voice interface logic
+│   └── styles/              # CSS files
+├── services/                # Backend services
+│   ├── __init__.py
+│   ├── stt_service.py      # Speech-to-text service
+│   ├── tts_service.py      # Text-to-speech service
+│   └── llm_service.py      # Language model service
+└── models/                  # Data models
+    └── __init__.py
+```
+
+## 📚 Development Journey
+
+### Days 1-3: Foundation & Setup
+- Project initialization
+- Basic API integrations
+- Error handling and logging
+
+### Days 4-6: Speech Recognition
+- Audio upload system
+- Real-time transcription
+- Audio processing pipeline
+
+### Days 7-9: Advanced Features
+- Session management
+- Conversation history
+- Enhanced error recovery
+
+### Days 10-14: Polish & Refinement
+- UI/UX improvements
+- Performance optimization
+- Comprehensive documentation
+
+## 🔧 Troubleshooting
+
+### Common Issues
+
+1. **Microphone Access**
+   - Ensure browser has microphone permissions
+   - Check for hardware issues
+   - Try a different browser
+
+2. **API Errors**
+   - Verify API keys in `.env`
+   - Check service status pages
+   - Review error logs
+
+3. **Installation Issues**
+   - Ensure Python 3.8+ is installed
+   - Try recreating virtual environment
+   - Check dependency versions
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Open a pull request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- [Murf AI](https://murf.ai/) for the TTS service
+- [AssemblyAI](https://assemblyai.com/) for speech recognition
+- [Perplexity AI](https://www.perplexity.ai/) for language model
+- [FastAPI](https://fastapi.tiangolo.com/) for the web framework
+
+---
+
+<div align="center">
+  Made with ❤️ by [Your Name]
+</div>
 
 ## 🚀 Challenge Overview
 
@@ -12,7 +167,7 @@ This project represents the **30 Days of AI Agent Challenge by Murf AI** - an in
 - **Perplexity AI** for intelligent conversational responses
 - **Royal Black** themed modern web interface for elegant user experience
 
-## ✨ Features (Days 10-14 Focus)
+## ✨ Features (Days 10-15 Focus)
 
 ### 🧠 Day 10: Chat History & Memory
 - **Session-based conversations** with persistent memory
@@ -45,26 +200,37 @@ This project represents the **30 Days of AI Agent Challenge by Murf AI** - an in
 - **Professional logging** throughout the application
 - **Clean, maintainable code** structure
 
-## 🏗️ Architecture
+### 🌐 Day 15: WebSocket Integration
+- **Real-time bidirectional communication** via WebSocket `/ws` endpoint
+- **Instant message echo** for connection testing
+- **Live audio visualization** during recording
+- **Real-time processing status** updates
+- **Enhanced session management** with WebSocket persistence
+- **Improved error handling** with connection resilience
+
+## 🏗️ Architecture (Day 15 - WebSocket Enhanced)
 
 ```
 Murf-ai/
-├── main.py                 # FastAPI application entry point
-├── services/               # Service layer
+├── main.py                     # FastAPI application entry point with WebSocket
+├── services/                   # Service layer
 │   ├── __init__.py
-│   ├── stt_service.py     # AssemblyAI integration
-│   ├── tts_service.py     # Murf AI integration
-│   └── llm_service.py     # Perplexity AI integration
-├── static/                # Frontend assets
-│   ├── index.html         # Main UI
-│   ├── style.css         # Royal Black theme
-│   └── script.js         # Frontend logic
-├── models/                # Pydantic models
-│   └── __init__.py
-├── uploads/              # Temporary audio files
-├── .env                  # Environment variables
-├── requirements.txt      # Python dependencies
-└── README.md            # This file
+│   ├── websocket_manager.py   # WebSocket connection management
+│   ├── stt_service.py         # AssemblyAI integration
+│   ├── tts_service.py         # Murf AI integration
+│   └── llm_service.py         # Perplexity AI integration
+├── models/                     # Pydantic models
+│   ├── __init__.py
+│   └── message_models.py      # WebSocket and API models
+├── static/                     # Frontend assets
+│   ├── index.html             # Main UI with WebSocket support
+│   ├── styles.css             # Enhanced Royal Black theme
+│   ├── websocket-client.js    # WebSocket client implementation
+│   ├── audio-visualizer.js    # Real-time audio visualization
+│   └── app.js                 # Main application controller
+├── .env                       # Environment variables
+├── requirements.txt           # Python dependencies
+└── README.md                 # This file
 ```
 
 ## 🔧 Setup & Installation
@@ -125,25 +291,53 @@ MAX_CHAT_HISTORY=10
 
 ## 🔌 API Endpoints
 
-### Core Endpoints (Days 10-14)
+### Core Endpoints (Days 10-15)
 
-#### `POST /agent/chat/{session_id}`
-**Primary conversational endpoint with memory**
+#### `WebSocket /ws` ⭐ **NEW in Day 15**
+**Real-time bidirectional communication endpoint**
 
-- **Input**: Audio file (multipart/form-data)
-- **Process**: STT → Chat History → LLM → Update History → TTS
-- **Output**: Audio URL with conversation context
-- **Features**: Session persistence, error handling, fallback responses
+- **Connection**: WebSocket protocol for instant messaging
+- **Features**: 
+  - Session creation and management
+  - Voice message processing (STT → LLM → TTS)
+  - Real-time processing status updates
+  - Echo testing for connection verification
+  - Automatic reconnection with exponential backoff
+- **Message Types**:
+  - `session_create` - Create new conversation session
+  - `session_join` - Join existing session
+  - `voice_message` - Send audio for processing
+  - `text_message` - Send text for processing
+  - `echo` - Test connection with echo response
+  - `processing_status` - Real-time processing updates
 
-#### `GET /agent/history/{session_id}`
+#### `GET /` 
+**Main application interface**
+
+- **Output**: Enhanced HTML interface with WebSocket support
+- **Features**: Real-time audio visualization, modern UI, debug console
+
+#### `GET /health`
+**Service health monitoring**
+
+- **Output**: Health status of all services (STT, TTS, LLM)
+- **Use**: Monitoring and debugging
+
+#### `GET /session/new`
+**Create new session via HTTP**
+
+- **Output**: New session ID and metadata
+- **Use**: Alternative to WebSocket session creation
+
+#### `GET /session/{session_id}/history`
 **Retrieve chat history for debugging**
 
 - **Input**: Session ID
 - **Output**: Complete conversation history
 - **Use**: Debugging and conversation analysis
 
-#### `DELETE /agent/history/{session_id}`
-**Clear session history**
+#### `DELETE /session/{session_id}`
+**Delete session and its history**
 
 - **Input**: Session ID
 - **Output**: Confirmation message
@@ -383,6 +577,20 @@ curl -X POST "http://localhost:8000/agent/chat/test-session" \
 - **Clean Code Principles**: Separation of concerns
 
 **Key Learning**: Software architecture principles and building maintainable codebases.
+
+#### Day 15: WebSocket Real-Time Communication ⭐ **NEW**
+**Goal**: Implement real-time bidirectional communication for enhanced user experience  
+**What I Built**:
+- **WebSocket Endpoint**: `/ws` for real-time client-server communication
+- **Connection Management**: Automatic reconnection with exponential backoff
+- **Echo Testing**: Simple message echo for connection verification
+- **Real-time Processing**: Live status updates during voice processing
+- **Enhanced Audio Visualization**: Real-time audio visualization during recording
+- **Improved Session Management**: WebSocket-based session persistence
+- **Debug Console**: Real-time logging and debugging interface
+- **Mobile-Responsive UI**: Enhanced responsive design for all devices
+
+**Key Learning**: Real-time web communication, WebSocket protocols, and building responsive user interfaces with live feedback.
 
 ## 🚀 Deployment
 

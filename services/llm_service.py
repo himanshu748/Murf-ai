@@ -1,334 +1,266 @@
 """
-Large Language Model Service using Perplexity AI
-Day 14 Refactored Module
+Language Model Service using Perplexity AI
+Handles intelligent conversation with context awareness
 """
 
 import os
 import logging
-import requests
-import json
-from typing import List, Dict, Any, Optional
-from dotenv import load_dotenv
+from typing import List, Dict, Optional
+import aiohttp
 
-# Load environment variables
-load_dotenv()
+from models.message_models import ServiceStatus
 
-# Configure logging
 logger = logging.getLogger(__name__)
 
 class LLMService:
-    """Perplexity AI Large Language Model Service"""
+    """Service for handling language model operations using Perplexity AI"""
     
     def __init__(self):
-        """Initialize LLM service with Perplexity AI configuration"""
-        self.api_key = os.getenv('PERPLEXITY_API_KEY')
+        self.api_key = os.getenv("PERPLEXITY_API_KEY")
+        self.base_url = "https://api.perplexity.ai"
+        
         if not self.api_key:
-            raise ValueError("PERPLEXITY_API_KEY not found in environment variables")
+            logger.error("PERPLEXITY_API_KEY not found in environment variables")
+            raise ValueError("Perplexity AI API key is required")
         
-        # Service configuration
-        self.config = {
-            'base_url': os.getenv('PERPLEXITY_API_BASE_URL', 'https://api.perplexity.ai'),
-            'model': os.getenv('LLM_MODEL', 'llama-3.1-sonar-small-128k-online'),
-            'temperature': float(os.getenv('LLM_TEMPERATURE', '0.7')),
-            'max_tokens': int(os.getenv('LLM_MAX_TOKENS', '150')),
-            'system_prompt': os.getenv('LLM_SYSTEM_PROMPT', 
-                'You are a helpful AI assistant. Keep responses concise and conversational for voice interactions.')
-        }
+        # Default model configuration - Using Sonar model
+        self.default_model = "sonar"
+        self.max_tokens = 150
+        self.temperature = 0.7
         
-        # Request headers
         self.headers = {
-            'Authorization': f'Bearer {self.api_key}',
-            'Content-Type': 'application/json',
-            'User-Agent': 'Murf-AI-Bot/1.0'
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
         }
         
-        logger.info(f"LLM Service initialized with model: {self.config['model']}")
+        # System prompt for voice agent
+        self.system_prompt = """You are a helpful AI voice assistant. Keep your responses:
+- Conversational and natural for voice interaction
+- Concise but informative (1-3 sentences typically)
+- Engaging and friendly in tone
+- Relevant to the conversation context
+- Easy to understand when spoken aloud
+
+Remember this is a voice conversation, so avoid complex formatting, long lists, or overly technical language unless specifically requested."""
+        
+        logger.info("LLM Service initialized with Perplexity AI")
     
-    async def generate_response(self, user_message: str, chat_history: List[Dict[str, str]] = None) -> Dict[str, Any]:
+    def is_healthy(self) -> bool:
+        """Check if the service is healthy"""
+        return bool(self.api_key)
+    
+    async def get_response(
+        self, 
+        user_message: str, 
+        chat_history: Optional[List[Dict[str, str]]] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None
+    ) -> Optional[str]:
         """
-        Generate response using Perplexity AI with chat history context
+        Get AI response to user message with conversation context
         
         Args:
-            user_message (str): Current user message
-            chat_history (List[Dict], optional): Previous conversation messages
+            user_message: User's input message
+            chat_history: Previous conversation messages
+            temperature: Response randomness (0.0 to 2.0)
+            max_tokens: Maximum response length
             
         Returns:
-            Dict containing LLM response and metadata
+            AI response text or None if failed
         """
         try:
-            logger.info(f"Generating LLM response for: '{user_message[:100]}{'...' if len(user_message) > 100 else ''}'")
+            if not user_message or not user_message.strip():
+                logger.warning("Empty user message provided to LLM")
+                return None
             
-            # Build messages array with chat history
-            messages = []
+            # Build messages array
+            messages = [{"role": "system", "content": self.system_prompt}]
             
-            # Add system prompt
-            messages.append({
-                'role': 'system',
-                'content': self.config['system_prompt']
-            })
-            
-            # Add chat history if provided
+            # Add chat history with proper alternation
             if chat_history:
-                for msg in chat_history[-10:]:  # Limit to last 10 messages
-                    if msg.get('role') and msg.get('content'):
-                        messages.append({
-                            'role': msg['role'],
-                            'content': msg['content']
-                        })
+                # Keep last 8 messages for context (4 exchanges)
+                recent_history = chat_history[-8:]
+                
+                # Ensure alternating pattern
+                filtered_history = []
+                last_role = "system"
+                
+                for msg in recent_history:
+                    current_role = msg.get("role", "")
+                    # Only add if it's different from the last role (ensures alternation)
+                    if current_role != last_role and current_role in ["user", "assistant"]:
+                        filtered_history.append(msg)
+                        last_role = current_role
+                
+                messages.extend(filtered_history)
             
-            # Add current user message
-            messages.append({
-                'role': 'user',
-                'content': user_message
-            })
+            # Add current user message (ensure it's different from last message)
+            if not messages or messages[-1]["role"] != "user":
+                messages.append({"role": "user", "content": user_message.strip()})
+            
+            # Log the message structure for debugging
+            logger.debug(f"Sending {len(messages)} messages to Perplexity API")
+            logger.debug(f"Message roles: {[msg.get('role') for msg in messages]}")
             
             # Prepare request payload
             payload = {
-                'model': self.config['model'],
-                'messages': messages,
-                'temperature': self.config['temperature'],
-                'max_tokens': self.config['max_tokens'],
-                'stream': False
+                "model": self.default_model,
+                "messages": messages,
+                "temperature": temperature or self.temperature,
+                "max_tokens": max_tokens or self.max_tokens,
+                "stream": False
             }
             
             # Make API request
-            response = requests.post(
-                f"{self.config['base_url']}/chat/completions",
-                json=payload,
-                headers=self.headers,
-                timeout=30
-            )
-            
-            # Check response status
-            if response.status_code != 200:
-                raise Exception(f"Perplexity API error {response.status_code}: {response.text}")
-            
-            # Parse response
-            result_data = response.json()
-            
-            if 'choices' not in result_data or not result_data['choices']:
-                raise Exception("No response choices returned from Perplexity API")
-            
-            # Extract response text
-            assistant_message = result_data['choices'][0]['message']['content']
-            
-            # Prepare result
-            result = {
-                'success': True,
-                'response': assistant_message,
-                'model': self.config['model'],
-                'tokens_used': result_data.get('usage', {}).get('total_tokens', 0),
-                'finish_reason': result_data['choices'][0].get('finish_reason', 'completed'),
-                'message_count': len(messages)
-            }
-            
-            logger.info(f"LLM response generated successfully: '{assistant_message[:100]}{'...' if len(assistant_message) > 100 else ''}'")
-            return result
-            
-        except requests.exceptions.RequestException as e:
-            logger.error(f"LLM network error: {str(e)}")
-            return {
-                'success': False,
-                'error': f"Network error: {str(e)}",
-                'response': "I'm having trouble connecting to my knowledge base right now. Please try again.",
-                'fallback_message': "I'm having trouble connecting right now. Please try again."
-            }
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.base_url}/chat/completions",
+                    headers=self.headers,
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=30)
+                ) as response:
+                    
+                    if response.status == 200:
+                        result = await response.json()
+                        
+                        # Extract response text
+                        choices = result.get("choices", [])
+                        if choices and len(choices) > 0:
+                            message = choices[0].get("message", {})
+                            content = message.get("content", "").strip()
+                            
+                            if content:
+                                logger.info(f"LLM response generated: {content[:100]}...")
+                                return content
+                            else:
+                                logger.error("Empty content in LLM response")
+                                return "I apologize, but I couldn't generate a proper response. Could you please try again?"
+                        else:
+                            logger.error("No choices in LLM response")
+                            return "I'm having trouble processing your request right now. Please try again."
+                    
+                    elif response.status == 429:
+                        logger.warning("Perplexity AI rate limit exceeded")
+                        return "I'm currently experiencing high demand. Please try again in a moment."
+                    
+                    elif response.status == 401:
+                        logger.error("Perplexity AI authentication failed")
+                        return "I'm having authentication issues. Please contact support."
+                    
+                    else:
+                        error_text = await response.text()
+                        logger.error(f"Perplexity AI API error {response.status}: {error_text}")
+                        return "I'm experiencing technical difficulties. Please try again later."
+                        
+        except aiohttp.ClientTimeout:
+            logger.error("Perplexity AI API request timed out")
+            return "I'm taking longer than usual to respond. Please try again."
         except Exception as e:
-            logger.error(f"LLM generation failed: {str(e)}")
-            return {
-                'success': False,
-                'error': str(e),
-                'response': "I'm experiencing technical difficulties. Please try asking your question again.",
-                'fallback_message': "I'm having trouble processing your request right now."
-            }
+            logger.error(f"Error getting LLM response: {str(e)}")
+            return "I encountered an unexpected error. Please try your request again."
     
-    def generate_response_sync(self, user_message: str, chat_history: List[Dict[str, str]] = None) -> Dict[str, Any]:
+    async def get_streaming_response(
+        self, 
+        user_message: str, 
+        chat_history: Optional[List[Dict[str, str]]] = None
+    ):
         """
-        Synchronous version of response generation (legacy support)
+        Get streaming AI response (for future implementation)
         
         Args:
-            user_message (str): Current user message
-            chat_history (List[Dict], optional): Previous conversation messages
+            user_message: User's input message
+            chat_history: Previous conversation messages
             
+        Yields:
+            Chunks of AI response
+        """
+        # Placeholder for streaming implementation
+        # This would be useful for real-time response generation
+        response = await self.get_response(user_message, chat_history)
+        if response:
+            yield response
+    
+    async def test_connection(self) -> bool:
+        """
+        Test connection to Perplexity AI
+        
         Returns:
-            Dict containing LLM response
+            True if connection successful, False otherwise
         """
         try:
-            messages = [{'role': 'system', 'content': self.config['system_prompt']}]
+            test_message = "Hello, can you hear me?"
+            response = await self.get_response(test_message)
             
-            if chat_history:
-                for msg in chat_history[-10:]:
-                    if msg.get('role') and msg.get('content'):
-                        messages.append(msg)
-            
-            messages.append({'role': 'user', 'content': user_message})
-            
-            payload = {
-                'model': self.config['model'],
-                'messages': messages,
-                'temperature': self.config['temperature'],
-                'max_tokens': self.config['max_tokens'],
-                'stream': False
-            }
-            
-            response = requests.post(
-                f"{self.config['base_url']}/chat/completions",
-                json=payload,
-                headers=self.headers,
-                timeout=30
-            )
-            
-            if response.status_code != 200:
-                raise Exception(f"Perplexity API error {response.status_code}: {response.text}")
-            
-            result_data = response.json()
-            assistant_message = result_data['choices'][0]['message']['content']
-            
-            return {
-                'success': True,
-                'response': assistant_message,
-                'model': self.config['model']
-            }
-            
+            if response and len(response) > 0:
+                logger.info("LLM service test successful")
+                return True
+            else:
+                logger.error("LLM service test failed - no response")
+                return False
+                
         except Exception as e:
-            logger.error(f"Sync LLM generation failed: {str(e)}")
-            return {
-                'success': False,
-                'error': str(e),
-                'response': "I'm having trouble right now. Please try again.",
-                'fallback_message': "I'm experiencing technical difficulties."
-            }
+            logger.error(f"LLM service test error: {str(e)}")
+            return False
     
-    def format_chat_history(self, messages: List[Dict[str, str]]) -> List[Dict[str, str]]:
-        """
-        Format chat history for API consumption
-        
-        Args:
-            messages (List[Dict]): Raw chat history
-            
-        Returns:
-            List[Dict]: Formatted messages for API
-        """
-        formatted_messages = []
-        
-        for msg in messages:
-            if 'role' in msg and 'content' in msg:
-                # Ensure role is valid
-                if msg['role'] in ['user', 'assistant', 'system']:
-                    formatted_messages.append({
-                        'role': msg['role'],
-                        'content': str(msg['content']).strip()
-                    })
-        
-        return formatted_messages
+    def get_status(self) -> ServiceStatus:
+        """Get service status"""
+        return ServiceStatus(
+            service_name="LLM (Perplexity AI)",
+            is_healthy=self.is_healthy(),
+            error_message=None if self.is_healthy() else "API key not configured"
+        )
     
-    def optimize_for_voice(self, text: str) -> str:
-        """
-        Optimize response text for voice output
-        
-        Args:
-            text (str): Original response text
-            
-        Returns:
-            str: Voice-optimized text
-        """
-        # Remove markdown formatting
-        text = text.replace('**', '').replace('*', '').replace('`', '')
-        
-        # Replace common symbols for better speech
-        replacements = {
-            '&': 'and',
-            '@': 'at',
-            '#': 'number',
-            '$': 'dollars',
-            '%': 'percent',
-            '+': 'plus',
-            '=': 'equals',
-            '<': 'less than',
-            '>': 'greater than'
+    def get_model_info(self) -> dict:
+        """Get current model configuration"""
+        return {
+            "model": self.default_model,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "provider": "Perplexity AI"
         }
-        
-        for symbol, word in replacements.items():
-            text = text.replace(symbol, word)
-        
-        # Ensure proper sentence endings
-        sentences = text.split('. ')
-        optimized_sentences = []
-        
-        for sentence in sentences:
-            sentence = sentence.strip()
-            if sentence and not sentence.endswith(('.', '!', '?')):
-                sentence += '.'
-            optimized_sentences.append(sentence)
-        
-        return ' '.join(optimized_sentences)
     
-    def validate_message_length(self, message: str) -> bool:
-        """
-        Validate if message length is within acceptable limits
-        
-        Args:
-            message (str): Message to validate
-            
-        Returns:
-            bool: True if message length is acceptable
-        """
-        max_length = 2000  # Characters
-        return len(message) <= max_length
+    def update_system_prompt(self, new_prompt: str):
+        """Update the system prompt"""
+        self.system_prompt = new_prompt
+        logger.info("System prompt updated")
     
     def get_conversation_summary(self, chat_history: List[Dict[str, str]]) -> str:
         """
-        Generate a summary of the conversation for context management
+        Generate a summary of the conversation (for long conversations)
         
         Args:
-            chat_history (List[Dict]): Chat history messages
+            chat_history: List of conversation messages
             
         Returns:
-            str: Conversation summary
+            Summary of the conversation
         """
-        if not chat_history:
+        if not chat_history or len(chat_history) < 4:
             return "New conversation started."
         
-        message_count = len(chat_history)
-        user_messages = [msg for msg in chat_history if msg.get('role') == 'user']
+        # Simple summary logic - in production, use LLM to generate summary
+        user_messages = [msg["content"] for msg in chat_history if msg["role"] == "user"]
+        assistant_messages = [msg["content"] for msg in chat_history if msg["role"] == "assistant"]
         
-        if message_count <= 2:
-            return f"Brief conversation with {len(user_messages)} user messages."
-        else:
-            return f"Ongoing conversation with {len(user_messages)} user messages and {message_count - len(user_messages)} responses."
+        return (f"Conversation with {len(user_messages)} user messages and "
+                f"{len(assistant_messages)} assistant responses.")
     
-    def get_service_status(self) -> Dict[str, Any]:
+    def format_for_voice(self, text: str) -> str:
         """
-        Get LLM service status and configuration
+        Format text response for better voice synthesis
         
+        Args:
+            text: Original text
+            
         Returns:
-            Dict containing service status
+            Voice-optimized text
         """
-        try:
-            # Test API connectivity with a simple request
-            test_payload = {
-                'model': self.config['model'],
-                'messages': [{'role': 'user', 'content': 'Hello'}],
-                'max_tokens': 5
-            }
-            
-            test_response = requests.post(
-                f"{self.config['base_url']}/chat/completions",
-                json=test_payload,
-                headers=self.headers,
-                timeout=10
-            )
-            api_accessible = test_response.status_code == 200
-            
-        except Exception:
-            api_accessible = False
+        # Remove excessive punctuation and formatting
+        formatted = text.replace("**", "").replace("*", "")
+        formatted = formatted.replace("\n\n", ". ")
+        formatted = formatted.replace("\n", " ")
         
-        return {
-            'service': 'Perplexity AI LLM',
-            'status': 'active' if api_accessible else 'limited',
-            'api_key_configured': bool(self.api_key),
-            'model': self.config['model'],
-            'temperature': self.config['temperature'],
-            'max_tokens': self.config['max_tokens'],
-            'api_accessible': api_accessible
-        }
+        # Ensure proper sentence endings for natural speech
+        if not formatted.endswith(('.', '!', '?')):
+            formatted += "."
+        
+        return formatted.strip()

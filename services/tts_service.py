@@ -1,341 +1,292 @@
 """
 Text-to-Speech Service using Murf AI
-Day 14 Refactored Module
+Handles voice generation with male voice preference and error handling
 """
 
 import os
 import logging
-import requests
 import tempfile
-from typing import Optional, Dict, Any
-from dotenv import load_dotenv
+from typing import Optional
+import aiohttp
+import aiofiles
 
-# Load environment variables
-load_dotenv()
+from models.message_models import ServiceStatus
 
-# Configure logging
 logger = logging.getLogger(__name__)
 
 class TTSService:
-    """Murf AI Text-to-Speech Service"""
+    """Service for handling text-to-speech operations using Murf AI"""
     
     def __init__(self):
-        """Initialize TTS service with Murf AI configuration"""
-        self.api_key = os.getenv('MURF_API_KEY')
+        self.api_key = os.getenv("MURF_API_KEY")
+        self.base_url = "https://api.murf.ai"
+        
         if not self.api_key:
-            raise ValueError("MURF_API_KEY not found in environment variables")
+            logger.error("MURF_API_KEY not found in environment variables")
+            raise ValueError("Murf AI API key is required")
         
-        # Service configuration
-        self.config = {
-            'base_url': os.getenv('MURF_API_BASE_URL', 'https://api.murf.ai/v1'),
-            'default_voice_id': os.getenv('DEFAULT_VOICE_ID', 'en-US-aileen'),
-            'output_format': os.getenv('TTS_OUTPUT_FORMAT', 'mp3'),
-            'speech_rate': float(os.getenv('TTS_SPEECH_RATE', '1.0'))
-        }
+        # Updated Indian male voice configuration for Murf AI
+        self.default_voice_id = "en-IN-aarav"  # Indian English male voice
+        self.default_voice_style = "Conversational"
         
-        # Request headers
         self.headers = {
-            'api-key': self.api_key,
-            'Content-Type': 'application/json',
-            'User-Agent': 'Murf-AI-Bot/1.0'
+            "accept": "application/json",
+            "content-type": "application/json", 
+            "x-api-key": self.api_key
         }
         
-        logger.info(f"TTS Service initialized with voice: {self.config['default_voice_id']}")
+        logger.info("TTS Service initialized with Murf AI")
     
-    async def generate_speech(self, text: str, voice_id: Optional[str] = None, 
-                            speech_rate: Optional[float] = None) -> Dict[str, Any]:
+    def is_healthy(self) -> bool:
+        """Check if the service is healthy"""
+        return bool(self.api_key)
+    
+    async def generate_speech(
+        self, 
+        text: str, 
+        voice_id: Optional[str] = None,
+        speed: float = 1.0
+    ) -> Optional[str]:
         """
-        Generate speech from text using Murf AI
+        Generate speech from text using Murf AI with fallback to browser TTS
         
         Args:
-            text (str): Text to convert to speech
-            voice_id (str, optional): Voice ID to use
-            speech_rate (float, optional): Speech rate (0.5 to 2.0)
+            text: Text to convert to speech
+            voice_id: Voice ID to use (optional, uses default male voice)
+            speed: Speech speed (0.5 to 2.0)
             
         Returns:
-            Dict containing TTS result and metadata
+            URL to generated audio file or "browser_tts" for fallback
         """
         try:
-            logger.info(f"Generating TTS for text: '{text[:100]}{'...' if len(text) > 100 else ''}'")
+            if not text or not text.strip():
+                logger.warning("Empty text provided for TTS")
+                return None
             
-            # Use provided values or defaults
-            voice_id = voice_id or self.config['default_voice_id']
-            speech_rate = speech_rate or self.config['speech_rate']
+            # Use default male voice if not specified
+            selected_voice = voice_id or self.default_voice_id
             
-            # Prepare request payload
+            # Correct Murf API payload structure
             payload = {
-                'text': text,
-                'voiceId': voice_id,
-                'outputFormat': self.config['output_format'],
-                'speechRate': speech_rate,
-                'model': 'murf-1'
+                "text": text.strip(),
+                "voice": selected_voice,
+                "voiceStyle": self.default_voice_style,
+                "rate": max(0.5, min(2.0, speed)),
+                "pronunciation": []
             }
             
-            # Make API request
-            response = requests.post(
-                f"{self.config['base_url']}/speech/generate",
-                json=payload,
-                headers=self.headers,
-                timeout=30
-            )
+            logger.info(f"Sending TTS request to Murf AI: {text[:50]}...")
             
-            # Check response status
-            if response.status_code != 200:
-                raise Exception(f"Murf API error {response.status_code}: {response.text}")
-            
-            # Parse response
-            result_data = response.json()
-            
-            if not result_data.get('success', False):
-                raise Exception(f"Murf API failed: {result_data.get('message', 'Unknown error')}")
-            
-            # Prepare result
-            result = {
-                'success': True,
-                'audio_url': result_data.get('audioFile'),
-                'voice_id': voice_id,
-                'text_length': len(text),
-                'estimated_duration': len(text) * 0.05,  # Rough estimate: 20 words per second
-                'format': self.config['output_format'],
-                'speech_rate': speech_rate
-            }
-            
-            logger.info(f"TTS generation successful, audio URL: {result['audio_url']}")
-            return result
-            
-        except requests.exceptions.RequestException as e:
-            logger.error(f"TTS network error: {str(e)}")
-            return {
-                'success': False,
-                'error': f"Network error: {str(e)}",
-                'fallback_message': "I'm having trouble generating speech right now. Please try again."
-            }
+            # Make API request to correct Murf endpoint
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.base_url}/v2/speech/generate-audio",
+                    headers=self.headers,
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=60)
+                ) as response:
+                    
+                    if response.status == 200:
+                        result = await response.json()
+                        logger.info(f"Murf AI response: {result}")
+                        
+                        # Handle different possible response structures
+                        audio_url = (result.get("audioFile") or 
+                                   result.get("audioUrl") or 
+                                   result.get("audio_url") or
+                                   result.get("url"))
+                        
+                        if audio_url:
+                            logger.info(f"TTS generated successfully for text: {text[:50]}...")
+                            return audio_url
+                        else:
+                            logger.error(f"No audio URL in Murf AI response: {result}")
+                            return "browser_tts"  # Fallback
+                    
+                    elif response.status == 429:
+                        logger.warning("Murf AI rate limit exceeded, using browser TTS")
+                        return "browser_tts"
+                    
+                    else:
+                        error_text = await response.text()
+                        logger.error(f"Murf AI API error {response.status}: {error_text}")
+                        return "browser_tts"  # Fallback to browser TTS
+                        
+        except aiohttp.ClientTimeout:
+            logger.error("Murf AI API request timed out")
+            return None
         except Exception as e:
-            logger.error(f"TTS generation failed: {str(e)}")
-            return {
-                'success': False,
-                'error': str(e),
-                'fallback_message': "Speech generation failed. Please try again."
-            }
+            logger.error(f"Error generating speech: {str(e)}")
+            return None
     
-    def generate_speech_sync(self, text: str, voice_id: Optional[str] = None) -> Dict[str, Any]:
+    async def generate_speech_file(
+        self, 
+        text: str, 
+        output_path: Optional[str] = None,
+        voice_id: Optional[str] = None,
+        speed: float = 1.0
+    ) -> Optional[str]:
         """
-        Synchronous version of speech generation (legacy support)
+        Generate speech and save to file
         
         Args:
-            text (str): Text to convert to speech
-            voice_id (str, optional): Voice ID to use
+            text: Text to convert to speech
+            output_path: Path to save audio file (optional, creates temp file)
+            voice_id: Voice ID to use (optional)
+            speed: Speech speed
             
         Returns:
-            Dict containing TTS result
+            Path to saved audio file or None if failed
         """
         try:
-            voice_id = voice_id or self.config['default_voice_id']
+            # Generate speech URL
+            audio_url = await self.generate_speech(text, voice_id, speed)
+            if not audio_url:
+                return None
             
-            payload = {
-                'text': text,
-                'voiceId': voice_id,
-                'outputFormat': self.config['output_format'],
-                'model': 'murf-1'
-            }
-            
-            response = requests.post(
-                f"{self.config['base_url']}/speech/generate",
-                json=payload,
-                headers=self.headers,
-                timeout=30
-            )
-            
-            if response.status_code != 200:
-                raise Exception(f"Murf API error {response.status_code}: {response.text}")
-            
-            result_data = response.json()
-            
-            if not result_data.get('success', False):
-                raise Exception(f"Murf API failed: {result_data.get('message', 'Unknown error')}")
-            
-            return {
-                'success': True,
-                'audio_url': result_data.get('audioFile'),
-                'voice_id': voice_id,
-                'format': self.config['output_format']
-            }
-            
+            # Download audio file
+            async with aiohttp.ClientSession() as session:
+                async with session.get(audio_url) as response:
+                    if response.status == 200:
+                        # Create output path if not provided
+                        if not output_path:
+                            temp_file = tempfile.NamedTemporaryFile(
+                                suffix=".mp3", 
+                                delete=False
+                            )
+                            output_path = temp_file.name
+                            temp_file.close()
+                        
+                        # Save audio data
+                        audio_data = await response.read()
+                        async with aiofiles.open(output_path, 'wb') as f:
+                            await f.write(audio_data)
+                        
+                        logger.info(f"Audio saved to: {output_path}")
+                        return output_path
+                    else:
+                        logger.error(f"Failed to download audio: {response.status}")
+                        return None
+                        
         except Exception as e:
-            logger.error(f"Sync TTS generation failed: {str(e)}")
-            return {
-                'success': False,
-                'error': str(e),
-                'fallback_message': "Speech generation failed. Please try again."
-            }
+            logger.error(f"Error generating speech file: {str(e)}")
+            return None
     
-    async def get_available_voices(self) -> Dict[str, Any]:
+    async def get_available_voices(self) -> Optional[list]:
         """
-        Get list of available voices from Murf AI (async version)
+        Get list of available voices from Murf AI
         
         Returns:
-            Dict containing available voices with detailed information
+            List of available voices or None if failed
         """
         try:
-            import aiohttp
             async with aiohttp.ClientSession() as session:
                 async with session.get(
-                    f"{self.config['base_url']}/voices",
+                    f"{self.base_url}/voices",
                     headers=self.headers,
                     timeout=aiohttp.ClientTimeout(total=10)
                 ) as response:
+                    
                     if response.status == 200:
-                        return await response.json()
+                        result = await response.json()
+                        voices = result.get("voices", [])
+                        
+                        # Filter for male voices
+                        male_voices = [
+                            voice for voice in voices 
+                            if voice.get("gender", "").lower() == "male"
+                        ]
+                        
+                        logger.info(f"Retrieved {len(male_voices)} male voices from Murf AI")
+                        return male_voices
                     else:
-                        raise Exception(f"Failed to fetch voices: {response.status}")
+                        error_text = await response.text()
+                        logger.error(f"Failed to get voices: {response.status} - {error_text}")
+                        return None
                         
         except Exception as e:
-            logger.error(f"Failed to get voices: {str(e)}")
-            # Return comprehensive default voice list
-            return [
-                {
-                    'id': 'en-US-aileen',
-                    'name': 'Aileen',
-                    'language': 'en-US',
-                    'gender': 'female',
-                    'style': 'friendly',
-                    'description': 'Warm, conversational female voice',
-                    'sample_url': None
-                },
-                {
-                    'id': 'en-US-adrian',
-                    'name': 'Adrian',
-                    'language': 'en-US',
-                    'gender': 'male',
-                    'style': 'professional',
-                    'description': 'Clear, professional male voice',
-                    'sample_url': None
-                },
-                {
-                    'id': 'en-US-davis',
-                    'name': 'Davis',
-                    'language': 'en-US',
-                    'gender': 'male',
-                    'style': 'casual',
-                    'description': 'Natural, conversational male voice',
-                    'sample_url': None
-                },
-                {
-                    'id': 'en-US-ken',
-                    'name': 'Ken',
-                    'language': 'en-US',
-                    'gender': 'male',
-                    'style': 'authoritative',
-                    'description': 'Strong, confident male voice',
-                    'sample_url': None
-                },
-                {
-                    'id': 'en-US-sarah',
-                    'name': 'Sarah',
-                    'language': 'en-US',
-                    'gender': 'female',
-                    'style': 'energetic',
-                    'description': 'Bright, energetic female voice',
-                    'sample_url': None
-                }
-            ]
+            logger.error(f"Error getting available voices: {str(e)}")
+            return None
     
-    def get_default_voice(self) -> str:
+    async def test_voice_generation(self) -> bool:
         """
-        Get the default voice ID
+        Test voice generation with a simple phrase
         
         Returns:
-            str: Default voice ID
-        """
-        return self.config['default_voice_id']
-    
-    def validate_text_length(self, text: str) -> bool:
-        """
-        Validate if text length is within acceptable limits
-        
-        Args:
-            text (str): Text to validate
-            
-        Returns:
-            bool: True if text length is acceptable
-        """
-        max_length = 5000  # Characters
-        return len(text) <= max_length
-    
-    def estimate_audio_duration(self, text: str, speech_rate: float = 1.0) -> float:
-        """
-        Estimate audio duration based on text length and speech rate
-        
-        Args:
-            text (str): Text to estimate duration for
-            speech_rate (float): Speech rate multiplier
-            
-        Returns:
-            float: Estimated duration in seconds
-        """
-        # Rough estimate: 150 words per minute for normal speech
-        words = len(text.split())
-        base_duration = (words / 150) * 60  # seconds
-        return base_duration / speech_rate
-    
-    def preprocess_text(self, text: str) -> str:
-        """
-        Preprocess text for better TTS output
-        
-        Args:
-            text (str): Raw text
-            
-        Returns:
-            str: Preprocessed text
-        """
-        # Basic text cleaning and formatting
-        text = text.strip()
-        
-        # Expand common abbreviations for better pronunciation
-        replacements = {
-            'AI': 'A I',
-            'API': 'A P I',
-            'TTS': 'Text to Speech',
-            'STT': 'Speech to Text',
-            'LLM': 'Large Language Model',
-            'URL': 'U R L',
-            'HTTP': 'H T T P'
-        }
-        
-        for abbrev, expansion in replacements.items():
-            text = text.replace(abbrev, expansion)
-        
-        # Ensure proper sentence endings
-        if text and not text.endswith(('.', '!', '?')):
-            text += '.'
-        
-        return text
-    
-    def get_service_status(self) -> Dict[str, Any]:
-        """
-        Get TTS service status and configuration
-        
-        Returns:
-            Dict containing service status
+            True if test successful, False otherwise
         """
         try:
-            # Test API connectivity
-            test_response = requests.get(
-                f"{self.config['base_url']}/voices",
-                headers=self.headers,
-                timeout=5
-            )
-            api_accessible = test_response.status_code == 200
+            test_text = "Hello, this is a test of the Murf AI voice generation service."
+            audio_url = await self.generate_speech(test_text)
             
-        except Exception:
-            api_accessible = False
+            if audio_url and audio_url != "browser_tts":
+                logger.info("TTS service test successful")
+                return True
+            else:
+                logger.error("TTS service test failed - using browser fallback")
+                return False
+                
+        except Exception as e:
+            logger.error(f"TTS service test error: {str(e)}")
+            return False
+    
+    async def check_murf_api_connection(self) -> dict:
+        """
+        Check Murf API connection and return detailed status
         
+        Returns:
+            Dict with connection status and details
+        """
+        try:
+            # Test with minimal request to check API connectivity
+            test_payload = {
+                "text": "Test",
+                "voice": self.default_voice_id,
+                "voiceStyle": self.default_voice_style,
+                "rate": 1.0,
+                "pronunciation": []
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.base_url}/v2/speech/generate-audio",
+                    headers=self.headers,
+                    json=test_payload,
+                    timeout=aiohttp.ClientTimeout(total=30)
+                ) as response:
+                    
+                    response_text = await response.text()
+                    
+                    return {
+                        "status": "connected" if response.status in [200, 429] else "error",
+                        "status_code": response.status,
+                        "response": response_text[:500],  # Truncate long responses
+                        "headers_sent": dict(self.headers),
+                        "api_key_present": bool(self.api_key),
+                        "api_key_length": len(self.api_key) if self.api_key else 0
+                    }
+                    
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": str(e),
+                "api_key_present": bool(self.api_key),
+                "api_key_length": len(self.api_key) if self.api_key else 0
+            }
+    
+    def get_status(self) -> ServiceStatus:
+        """Get service status"""
+        return ServiceStatus(
+            service_name="TTS (Murf AI)",
+            is_healthy=self.is_healthy(),
+            error_message=None if self.is_healthy() else "API key not configured"
+        )
+    
+    def get_default_voice_config(self) -> dict:
+        """Get default voice configuration"""
         return {
-            'service': 'Murf AI TTS',
-            'status': 'active' if api_accessible else 'limited',
-            'api_key_configured': bool(self.api_key),
-            'default_voice': self.config['default_voice_id'],
-            'output_format': self.config['output_format'],
-            'speech_rate': self.config['speech_rate'],
-            'api_accessible': api_accessible
+            "voice_id": self.default_voice_id,
+            "style": self.default_style,
+            "gender": "male",
+            "language": "en-US"
         }
