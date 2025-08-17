@@ -274,6 +274,89 @@ body {
   order: 2; /* Place after visualizer */
 }
 
+/* Streaming Controls */
+.streaming-controls {
+    margin: 1.5rem 0;
+    display: flex;
+    justify-content: center;
+    order: 3;
+}
+
+.mode-toggle {
+    text-align: center;
+}
+
+.toggle-label {
+    display: inline-block;
+    position: relative;
+    cursor: pointer;
+}
+
+.toggle-checkbox {
+    display: none;
+}
+
+.toggle-slider {
+    display: flex;
+    width: 240px;
+    height: 40px;
+    background: var(--color-surface);
+    border: 2px solid var(--color-accent-blue);
+    border-radius: 20px;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.toggle-text {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    transition: all 0.3s ease;
+    z-index: 2;
+    position: relative;
+}
+
+.toggle-slider::before {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: calc(50% - 2px);
+    height: calc(100% - 4px);
+    background: linear-gradient(135deg, var(--color-accent-blue), #005299);
+    border-radius: 16px;
+    transition: all 0.3s ease;
+    z-index: 1;
+}
+
+.toggle-checkbox:checked + .toggle-slider::before {
+    transform: translateX(100%);
+}
+
+.toggle-checkbox:checked + .toggle-slider .toggle-text:first-child {
+    color: var(--color-text-secondary);
+}
+
+.toggle-checkbox:checked + .toggle-slider .toggle-text:last-child {
+    color: var(--color-text-primary);
+}
+
+.toggle-checkbox:not(:checked) + .toggle-slider .toggle-text:first-child {
+    color: var(--color-text-primary);
+}
+
+.mode-description {
+    margin-top: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+    opacity: 0.8;
+}
+
 .record-btn {
   position: relative;
   width: 160px;

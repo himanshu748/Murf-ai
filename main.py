@@ -1,6 +1,6 @@
 """
-Murf AI Voice Agent - Day 15: WebSocket Integration
-A sophisticated AI-powered conversational agent with real-time WebSocket communication.
+Murf AI Voice Agent - Day 16: Real-Time Audio Streaming
+A sophisticated AI-powered conversational agent with real-time WebSocket audio streaming.
 """
 
 import os
@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Murf AI Voice Agent",
     description="AI-powered conversational agent with WebSocket support",
-    version="2.0.0 (Day 15)"
+    version="2.1.0 (Day 16)"
 )
 
 # Mount static files
@@ -55,6 +55,9 @@ llm_service = LLMService()
 
 # Session storage (in production, use Redis or database)
 sessions: Dict[str, List[ChatMessage]] = {}
+
+# Audio streaming sessions
+streaming_sessions: Dict[str, dict] = {}
 
 @app.get("/", response_class=HTMLResponse)
 async def get_homepage():
@@ -132,6 +135,7 @@ async def websocket_endpoint(websocket: WebSocket):
     """
     Main WebSocket endpoint for real-time voice agent communication
     Day 15 Feature: Real-time bidirectional communication
+    Day 16 Feature: Real-time audio streaming
     """
     session_id = None
     try:
@@ -146,14 +150,25 @@ async def websocket_endpoint(websocket: WebSocket):
         })
         
         while True:
-            # Receive message from client
-            data = await websocket.receive_text()
-            message_data = json.loads(data)
+            # Receive message (could be text or binary)
+            message = await websocket.receive()
             
-            logger.info(f"Received WebSocket message: {message_data.get('type', 'unknown')}")
-            
-            # Handle different message types
-            await handle_websocket_message(websocket, message_data)
+            if message['type'] == 'websocket.receive':
+                if 'text' in message:
+                    # Handle text message
+                    try:
+                        message_data = json.loads(message['text'])
+                        logger.info(f"Received WebSocket message: {message_data.get('type', 'unknown')}")
+                        await handle_websocket_message(websocket, message_data)
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Invalid JSON received: {e}")
+                        await websocket_manager.send_error(websocket, "Invalid JSON format")
+                        
+                elif 'bytes' in message:
+                    # Handle binary audio data
+                    binary_data = message['bytes']
+                    logger.debug(f"Received binary audio data: {len(binary_data)} bytes")
+                    await handle_audio_stream(websocket, binary_data)
             
     except WebSocketDisconnect:
         logger.info("WebSocket connection closed")
@@ -166,6 +181,21 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.error(f"WebSocket error: {str(e)}")
         await websocket_manager.send_error(websocket, str(e))
     finally:
+        # Cleanup streaming sessions for this websocket
+        sessions_to_remove = []
+        for sid, session in streaming_sessions.items():
+            if session["websocket"] == websocket:
+                sessions_to_remove.append(sid)
+                # Close file handle if still open
+                try:
+                    session["file_handle"].close()
+                    logger.info(f"Closed streaming session {sid} on disconnect")
+                except:
+                    pass
+        
+        for sid in sessions_to_remove:
+            del streaming_sessions[sid]
+            
         websocket_manager.disconnect(websocket)
 
 async def handle_websocket_message(websocket: WebSocket, message_data: dict):
@@ -207,6 +237,12 @@ async def handle_websocket_message(websocket: WebSocket, message_data: dict):
             
         elif message_type == "text_message":
             await process_text_message(websocket, message_data)
+            
+        elif message_type == "start_streaming":
+            await start_audio_streaming(websocket, message_data)
+            
+        elif message_type == "stop_streaming":
+            await stop_audio_streaming(websocket, message_data)
             
         else:
             await websocket_manager.send_error(websocket, f"Unknown message type: {message_type}")
@@ -322,6 +358,122 @@ async def process_ai_response(websocket: WebSocket, session_id: str, user_input:
     except Exception as e:
         logger.error(f"Error processing AI response: {str(e)}")
         await websocket_manager.send_error(websocket, str(e))
+
+async def start_audio_streaming(websocket: WebSocket, message_data: dict):
+    """Initialize audio streaming session"""
+    try:
+        session_id = message_data.get("session_id")
+        if not session_id:
+            await websocket_manager.send_error(websocket, "Session ID required for streaming")
+            return
+        
+        # Create audio file path
+        import os
+        os.makedirs("recordings", exist_ok=True)
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        filename = f"recordings/stream_{session_id}_{timestamp}.webm"
+        
+        # Initialize streaming session
+        streaming_sessions[session_id] = {
+            "websocket": websocket,
+            "filename": filename,
+            "file_handle": open(filename, "wb"),
+            "start_time": datetime.utcnow(),
+            "chunk_count": 0,
+            "total_bytes": 0
+        }
+        
+        logger.info(f"Started audio streaming for session {session_id} -> {filename}")
+        
+        await websocket_manager.send_message(websocket, {
+            "type": "streaming_started",
+            "session_id": session_id,
+            "filename": filename,
+            "message": "Audio streaming started"
+        })
+        
+    except Exception as e:
+        logger.error(f"Error starting audio streaming: {str(e)}")
+        await websocket_manager.send_error(websocket, str(e))
+
+async def stop_audio_streaming(websocket: WebSocket, message_data: dict):
+    """Stop audio streaming and finalize file"""
+    try:
+        session_id = message_data.get("session_id")
+        if not session_id or session_id not in streaming_sessions:
+            await websocket_manager.send_error(websocket, "No active streaming session found")
+            return
+        
+        session = streaming_sessions[session_id]
+        
+        # Close file handle
+        session["file_handle"].close()
+        
+        # Calculate session stats
+        duration = datetime.utcnow() - session["start_time"]
+        stats = {
+            "filename": session["filename"],
+            "duration_seconds": duration.total_seconds(),
+            "total_chunks": session["chunk_count"],
+            "total_bytes": session["total_bytes"],
+            "avg_chunk_size": session["total_bytes"] / max(session["chunk_count"], 1)
+        }
+        
+        logger.info(f"Stopped audio streaming for session {session_id}: {stats}")
+        
+        # Remove from active sessions
+        del streaming_sessions[session_id]
+        
+        await websocket_manager.send_message(websocket, {
+            "type": "streaming_stopped",
+            "session_id": session_id,
+            "stats": stats,
+            "message": f"Audio saved to {stats['filename']}"
+        })
+        
+    except Exception as e:
+        logger.error(f"Error stopping audio streaming: {str(e)}")
+        await websocket_manager.send_error(websocket, str(e))
+
+async def handle_audio_stream(websocket: WebSocket, audio_data: bytes):
+    """Handle incoming streaming audio data"""
+    try:
+        # Find the streaming session for this websocket
+        session_id = None
+        for sid, session in streaming_sessions.items():
+            if session["websocket"] == websocket:
+                session_id = sid
+                break
+        
+        if not session_id:
+            logger.warning("Received audio data but no active streaming session found")
+            return
+        
+        session = streaming_sessions[session_id]
+        
+        # Write audio data to file
+        session["file_handle"].write(audio_data)
+        session["file_handle"].flush()  # Ensure data is written
+        
+        # Update session stats
+        session["chunk_count"] += 1
+        session["total_bytes"] += len(audio_data)
+        
+        # Send progress update every 10 chunks
+        if session["chunk_count"] % 10 == 0:
+            await websocket_manager.send_message(websocket, {
+                "type": "streaming_progress",
+                "session_id": session_id,
+                "chunk_count": session["chunk_count"],
+                "total_bytes": session["total_bytes"],
+                "chunk_size": len(audio_data)
+            })
+        
+        logger.debug(f"Received audio chunk {session['chunk_count']}: {len(audio_data)} bytes")
+        
+    except Exception as e:
+        logger.error(f"Error handling audio stream: {str(e)}")
+        # Don't send error message here to avoid disrupting the stream
 
 if __name__ == "__main__":
     uvicorn.run(

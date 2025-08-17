@@ -1,23 +1,29 @@
-# 🎤 Murf AI Conversational Bot
+# 🎤 Murf AI Conversational Bot - Day 16
 
-A sophisticated AI-powered conversational agent with voice capabilities, built with FastAPI and modern web technologies. This project combines Murf AI (TTS), AssemblyAI (STT), and Perplexity AI (LLM) to create a seamless voice interaction experience.
+A sophisticated AI-powered conversational agent with real-time audio streaming capabilities, built with FastAPI and modern web technologies. This project combines Murf AI (TTS), AssemblyAI (STT), and Perplexity AI (LLM) to create a seamless voice interaction experience with real-time WebSocket audio streaming.
 
 ## ✨ Key Features
 
 ### 🎙️ Voice Interaction
 - Real-time speech-to-text and text-to-speech
+- **NEW**: Real-time audio streaming to server
+- **NEW**: Dual recording modes (Traditional vs Streaming)
 - Multiple voice options with preview
 - Noise cancellation and audio processing
 - Session-based conversation memory
 
 ### 🎨 Modern UI
-- Royal Black theme with elegant gold accents
+- Royal Black theme with elegant blue accents
+- **NEW**: Streaming mode toggle with visual feedback
 - Responsive design for all devices
 - Real-time audio visualization
 - Interactive chat interface
+- **NEW**: Live streaming progress indicators
 
 ### 🛠️ Technical Highlights
 - FastAPI backend with WebSocket support
+- **NEW**: Binary audio streaming via WebSocket
+- **NEW**: Real-time file persistence and session management
 - Modular service architecture
 - Comprehensive error handling
 - Session persistence
@@ -167,7 +173,7 @@ This project represents the **30 Days of AI Agent Challenge by Murf AI** - an in
 - **Perplexity AI** for intelligent conversational responses
 - **Royal Black** themed modern web interface for elegant user experience
 
-## ✨ Features (Days 10-15 Focus)
+## ✨ Features (Days 10-16 Focus)
 
 ### 🧠 Day 10: Chat History & Memory
 - **Session-based conversations** with persistent memory
@@ -208,11 +214,21 @@ This project represents the **30 Days of AI Agent Challenge by Murf AI** - an in
 - **Enhanced session management** with WebSocket persistence
 - **Improved error handling** with connection resilience
 
-## 🏗️ Architecture (Day 15 - WebSocket Enhanced)
+### 🎵 Day 16: Real-Time Audio Streaming
+- **Binary WebSocket streaming** for real-time audio transmission
+- **Dual recording modes** with intuitive toggle (Traditional ↔ Streaming)
+- **Session-based file management** with automatic naming and timestamps
+- **Live streaming progress** with chunk count and byte tracking
+- **Audio file persistence** saved to `recordings/` directory
+- **Comprehensive streaming statistics** including duration and average chunk size
+
+## 🏗️ Architecture (Day 16 - Audio Streaming Enhanced)
 
 ```
 Murf-ai/
-├── main.py                     # FastAPI application entry point with WebSocket
+├── main.py                     # FastAPI application entry point with audio streaming
+├── recordings/                 # Audio streaming output directory
+│   └── stream_[session]_[timestamp].webm  # Streamed audio files
 ├── services/                   # Service layer
 │   ├── __init__.py
 │   ├── websocket_manager.py   # WebSocket connection management
@@ -223,11 +239,11 @@ Murf-ai/
 │   ├── __init__.py
 │   └── message_models.py      # WebSocket and API models
 ├── static/                     # Frontend assets
-│   ├── index.html             # Main UI with WebSocket support
-│   ├── styles.css             # Enhanced Royal Black theme
+│   ├── index.html             # Main UI with streaming controls
+│   ├── styles.css             # Enhanced theme with streaming UI
 │   ├── websocket-client.js    # WebSocket client implementation
 │   ├── audio-visualizer.js    # Real-time audio visualization
-│   └── app.js                 # Main application controller
+│   └── app.js                 # Main application controller with streaming
 ├── .env                       # Environment variables
 ├── requirements.txt           # Python dependencies
 └── README.md                 # This file
@@ -591,6 +607,20 @@ curl -X POST "http://localhost:8000/agent/chat/test-session" \
 - **Mobile-Responsive UI**: Enhanced responsive design for all devices
 
 **Key Learning**: Real-time web communication, WebSocket protocols, and building responsive user interfaces with live feedback.
+
+#### Day 16: Real-Time Audio Streaming ⭐ **NEW**
+**Goal**: Stream audio data in real-time from client to server and save to file  
+**What I Built**:
+- **Binary WebSocket Streaming**: Real-time audio chunk transmission via WebSocket
+- **Dual Recording Modes**: Toggle between Traditional (record→process) and Streaming (real-time→file)
+- **Session-Based File Management**: Automatic file creation with session IDs and timestamps
+- **Real-Time Progress Tracking**: Live updates showing chunk count, bytes streamed, and progress
+- **Advanced WebSocket Handling**: Support for both text (JSON) and binary (audio) message types
+- **Streaming UI Controls**: Modern toggle switch with visual feedback and mode descriptions
+- **File Persistence**: Audio saved to `recordings/stream_[session]_[timestamp].webm`
+- **Comprehensive Statistics**: Duration, chunk count, total bytes, and average chunk size tracking
+
+**Key Learning**: Real-time binary data streaming, mixed message type handling in WebSockets, and building dual-mode audio recording interfaces.
 
 ## 🚀 Deployment
 

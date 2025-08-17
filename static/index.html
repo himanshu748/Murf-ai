@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Murf AI Voice Agent - Day 15</title>
+    <title>Murf AI Voice Agent - Day 16</title>
     <link rel="stylesheet" href="/static/styles.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -16,7 +16,7 @@
             <div class="header-content">
                 <h1 class="app-title">
                     🎤 Murf AI Voice Agent
-                    <span class="version-badge">Day 15</span>
+                    <span class="version-badge">Day 16</span>
                 </h1>
                 <div class="connection-status">
                     <div class="status-indicator" id="connectionStatus">
@@ -63,6 +63,22 @@
                         </div>
                         <span class="record-text">Click to Start</span>
                     </button>
+                </div>
+
+                <!-- Streaming Mode Controls -->
+                <div class="streaming-controls">
+                    <div class="mode-toggle">
+                        <label class="toggle-label">
+                            <input type="checkbox" id="streamingToggle" class="toggle-checkbox">
+                            <div class="toggle-slider">
+                                <span class="toggle-text">Traditional</span>
+                                <span class="toggle-text">Streaming</span>
+                            </div>
+                        </label>
+                        <div class="mode-description" id="modeDescription">
+                            Traditional: Record → Process → Response
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Status Display -->

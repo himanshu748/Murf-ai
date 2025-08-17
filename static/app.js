@@ -16,6 +16,8 @@ class VoiceAgent {
         this.isProcessing = false;
         this.currentSessionId = null;
         this.conversationHistory = [];
+        this.isStreaming = false;
+        this.streamingMode = false;
         
         // DOM elements
         this.recordBtn = document.getElementById('recordBtn');
@@ -117,6 +119,23 @@ class VoiceAgent {
             this.updateStatus('Response complete - Ready for next message');
             this.isProcessing = false;
         });
+        
+        // Streaming events
+        this.wsClient.on('streaming_started', (data) => {
+            this.isStreaming = true;
+            this.updateStatus(`Audio streaming started - ${data.filename}`);
+            console.log('Streaming started:', data);
+        });
+        
+        this.wsClient.on('streaming_stopped', (data) => {
+            this.isStreaming = false;
+            this.updateStatus(`Audio saved: ${data.stats.total_chunks} chunks, ${Math.round(data.stats.total_bytes/1024)}KB`);
+            console.log('Streaming stopped:', data.stats);
+        });
+        
+        this.wsClient.on('streaming_progress', (data) => {
+            this.updateStatus(`Streaming... ${data.chunk_count} chunks (${Math.round(data.total_bytes/1024)}KB)`);
+        });
     }
     
     setupEventListeners() {
@@ -134,6 +153,20 @@ class VoiceAgent {
         if (clearChatBtn) {
             clearChatBtn.addEventListener('click', () => {
                 this.clearConversation();
+            });
+        }
+        
+        // Streaming mode toggle
+        const streamingToggle = document.getElementById('streamingToggle');
+        const modeDescription = document.getElementById('modeDescription');
+        if (streamingToggle && modeDescription) {
+            streamingToggle.addEventListener('change', () => {
+                this.toggleStreamingMode();
+                if (this.streamingMode) {
+                    modeDescription.textContent = 'Streaming: Real-time audio to file';
+                } else {
+                    modeDescription.textContent = 'Traditional: Record → Process → Response';
+                }
             });
         }
         
@@ -211,16 +244,34 @@ class VoiceAgent {
             
             this.mediaRecorder.ondataavailable = (event) => {
                 if (event.data.size > 0) {
-                    this.audioChunks.push(event.data);
+                    if (this.streamingMode) {
+                        // Stream audio chunks in real-time
+                        this.streamAudioChunk(event.data);
+                    } else {
+                        // Accumulate chunks for traditional processing
+                        this.audioChunks.push(event.data);
+                    }
                 }
             };
             
             this.mediaRecorder.onstop = () => {
-                this.processRecording();
+                if (this.streamingMode) {
+                    this.stopAudioStreaming();
+                } else {
+                    this.processRecording();
+                }
             };
             
-            // Start recording
-            this.mediaRecorder.start(100); // Collect data every 100ms
+            // Start recording with appropriate interval
+            if (this.streamingMode) {
+                // Start streaming session first
+                this.startAudioStreaming();
+                // Shorter intervals for streaming (50ms)
+                this.mediaRecorder.start(50);
+            } else {
+                // Longer intervals for traditional recording (100ms)
+                this.mediaRecorder.start(100);
+            }
             this.isRecording = true;
             
             // Update UI
@@ -669,6 +720,62 @@ class VoiceAgent {
             errorMessage.textContent = enhancedMessage;
             errorModal.classList.add('show');
         }
+    }
+    
+    // Audio Streaming Methods
+    startAudioStreaming() {
+        if (!this.currentSessionId) {
+            console.error('No session ID available for streaming');
+            return;
+        }
+        
+        // Send start streaming message
+        this.wsClient.sendMessage({
+            type: 'start_streaming',
+            session_id: this.currentSessionId
+        });
+        
+        console.log('Started audio streaming for session:', this.currentSessionId);
+    }
+    
+    streamAudioChunk(audioBlob) {
+        if (!this.isStreaming) {
+            console.warn('Received audio chunk but streaming not active');
+            return;
+        }
+        
+        // Convert blob to array buffer and send as binary data
+        audioBlob.arrayBuffer().then(arrayBuffer => {
+            if (this.wsClient && this.wsClient.ws && this.wsClient.ws.readyState === WebSocket.OPEN) {
+                this.wsClient.ws.send(arrayBuffer);
+            }
+        }).catch(error => {
+            console.error('Error sending audio chunk:', error);
+        });
+    }
+    
+    stopAudioStreaming() {
+        if (!this.currentSessionId) {
+            console.error('No session ID available for stopping streaming');
+            return;
+        }
+        
+        // Send stop streaming message
+        this.wsClient.sendMessage({
+            type: 'stop_streaming',
+            session_id: this.currentSessionId
+        });
+        
+        console.log('Stopped audio streaming for session:', this.currentSessionId);
+    }
+    
+    // Toggle between streaming and traditional recording modes
+    toggleStreamingMode() {
+        this.streamingMode = !this.streamingMode;
+        const mode = this.streamingMode ? 'Streaming' : 'Traditional';
+        this.updateStatus(`Recording mode: ${mode}`);
+        console.log(`Switched to ${mode} recording mode`);
+        return this.streamingMode;
     }
     
     cleanup() {
