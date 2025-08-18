@@ -282,6 +282,21 @@ body {
     order: 3;
 }
 
+/* Day 17: Transcription Controls */
+.transcription-controls {
+    margin: 1rem 0;
+    display: flex;
+    justify-content: center;
+    order: 4;
+}
+
+.transcription-toggle {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+}
+
 .mode-toggle {
     text-align: center;
 }
@@ -930,6 +945,125 @@ body {
   100% {
     transform: rotate(360deg);
   }
+}
+
+/* Day 17: Transcription Display */
+.transcription-container {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(0, 122, 204, 0.3);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin: 1.5rem 0;
+    backdrop-filter: blur(10px);
+}
+
+.transcription-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid rgba(0, 122, 204, 0.2);
+}
+
+.transcription-header h3 {
+    color: var(--color-accent-blue);
+    font-size: 1.2rem;
+    margin: 0;
+    font-weight: 600;
+}
+
+.transcription-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.transcription-indicator {
+    font-size: 0.8rem;
+    color: #666;
+    transition: color 0.3s ease;
+}
+
+.transcription-indicator.active {
+    color: var(--color-accent-blue);
+    animation: pulse 2s infinite;
+}
+
+.transcription-status-text {
+    font-size: 0.9rem;
+    color: #888;
+    font-weight: 500;
+}
+
+.transcription-display {
+    min-height: 150px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.partial-transcript {
+    padding: 0.75rem;
+    background: rgba(0, 122, 204, 0.1);
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    font-style: italic;
+    color: #ccc;
+    border-left: 3px solid var(--color-accent-blue);
+    min-height: 20px;
+}
+
+.partial-transcript:empty {
+    display: none;
+}
+
+.final-transcripts {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.transcript-item {
+    padding: 0.75rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    border-left: 3px solid rgba(0, 122, 204, 0.5);
+    animation: slideInUp 0.3s ease;
+}
+
+.transcript-text {
+    color: #fff;
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+}
+
+.transcript-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+    color: #888;
+}
+
+.transcript-confidence {
+    color: var(--color-accent-blue);
+}
+
+.transcript-placeholder {
+    text-align: center;
+    color: #666;
+    font-style: italic;
+    padding: 2rem;
+}
+
+@keyframes slideInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 /* Responsive Design */

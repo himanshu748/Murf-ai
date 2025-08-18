@@ -1,6 +1,6 @@
 """
-Murf AI Voice Agent - Day 16: Real-Time Audio Streaming
-A sophisticated AI-powered conversational agent with real-time WebSocket audio streaming.
+Murf AI Voice Agent - Day 17: Real-Time Audio Transcription
+A sophisticated AI-powered conversational agent with real-time WebSocket audio streaming and transcription.
 """
 
 import os
@@ -18,6 +18,7 @@ import uvicorn
 
 from services.websocket_manager import WebSocketManager
 from services.stt_service import STTService
+from services.streaming_stt_service import StreamingSTTService
 from services.tts_service import TTSService
 from services.llm_service import LLMService
 from models.message_models import (
@@ -41,7 +42,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Murf AI Voice Agent",
     description="AI-powered conversational agent with WebSocket support",
-    version="2.1.0 (Day 16)"
+    version="2.2.0 (Day 17)"
 )
 
 # Mount static files
@@ -50,6 +51,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # Initialize services
 websocket_manager = WebSocketManager()
 stt_service = STTService()
+streaming_stt_service = StreamingSTTService()
 tts_service = TTSService()
 llm_service = LLMService()
 
@@ -58,6 +60,9 @@ sessions: Dict[str, List[ChatMessage]] = {}
 
 # Audio streaming sessions
 streaming_sessions: Dict[str, dict] = {}
+
+# Transcription streaming sessions
+transcription_sessions: Dict[str, dict] = {}
 
 @app.get("/", response_class=HTMLResponse)
 async def get_homepage():
@@ -76,6 +81,7 @@ async def health_check():
         "timestamp": datetime.utcnow().isoformat(),
         "services": {
             "stt": stt_service.is_healthy(),
+            "streaming_stt": streaming_stt_service.is_healthy(),
             "tts": tts_service.is_healthy(),
             "llm": llm_service.is_healthy()
         }
@@ -195,6 +201,21 @@ async def websocket_endpoint(websocket: WebSocket):
         
         for sid in sessions_to_remove:
             del streaming_sessions[sid]
+        
+        # Cleanup transcription sessions for this websocket
+        transcription_sessions_to_remove = []
+        for sid, session in transcription_sessions.items():
+            if session["websocket"] == websocket:
+                transcription_sessions_to_remove.append(sid)
+                # Stop transcription service
+                try:
+                    await streaming_stt_service.stop_streaming_session(sid)
+                    logger.info(f"Stopped transcription session {sid} on disconnect")
+                except:
+                    pass
+        
+        for sid in transcription_sessions_to_remove:
+            del transcription_sessions[sid]
             
         websocket_manager.disconnect(websocket)
 
@@ -243,6 +264,12 @@ async def handle_websocket_message(websocket: WebSocket, message_data: dict):
             
         elif message_type == "stop_streaming":
             await stop_audio_streaming(websocket, message_data)
+            
+        elif message_type == "start_transcription":
+            await start_streaming_transcription(websocket, message_data)
+            
+        elif message_type == "stop_transcription":
+            await stop_streaming_transcription(websocket, message_data)
             
         else:
             await websocket_manager.send_error(websocket, f"Unknown message type: {message_type}")
@@ -459,6 +486,10 @@ async def handle_audio_stream(websocket: WebSocket, audio_data: bytes):
         session["chunk_count"] += 1
         session["total_bytes"] += len(audio_data)
         
+        # Day 17: Stream audio to transcription service if transcription is active
+        if session_id in transcription_sessions:
+            await streaming_stt_service.stream_audio_chunk(session_id, audio_data)
+        
         # Send progress update every 10 chunks
         if session["chunk_count"] % 10 == 0:
             await websocket_manager.send_message(websocket, {
@@ -474,6 +505,101 @@ async def handle_audio_stream(websocket: WebSocket, audio_data: bytes):
     except Exception as e:
         logger.error(f"Error handling audio stream: {str(e)}")
         # Don't send error message here to avoid disrupting the stream
+
+async def start_streaming_transcription(websocket: WebSocket, message_data: dict):
+    """Start real-time transcription for streaming audio"""
+    try:
+        session_id = message_data.get("session_id")
+        if not session_id:
+            await websocket_manager.send_error(websocket, "Session ID required for transcription")
+            return
+        
+        # Define callbacks for transcription events
+        async def on_partial_transcript(data):
+            """Handle partial transcription results"""
+            await websocket_manager.send_message(websocket, {
+                "type": "partial_transcript",
+                "session_id": data["session_id"],
+                "text": data["text"],
+                "confidence": data["confidence"],
+                "timestamp": data["timestamp"]
+            })
+        
+        async def on_final_transcript(data):
+            """Handle final transcription results"""
+            await websocket_manager.send_message(websocket, {
+                "type": "final_transcript",
+                "session_id": data["session_id"],
+                "text": data["text"],
+                "confidence": data["confidence"],
+                "timestamp": data["timestamp"]
+            })
+        
+        async def on_transcription_error(data):
+            """Handle transcription errors"""
+            await websocket_manager.send_message(websocket, {
+                "type": "transcription_error",
+                "session_id": data["session_id"],
+                "error": data["error"],
+                "timestamp": data["timestamp"]
+            })
+        
+        # Start streaming transcription session
+        success = await streaming_stt_service.start_streaming_session(
+            session_id=session_id,
+            on_partial_transcript=on_partial_transcript,
+            on_final_transcript=on_final_transcript,
+            on_error=on_transcription_error
+        )
+        
+        if success:
+            # Store transcription session
+            transcription_sessions[session_id] = {
+                "websocket": websocket,
+                "started_at": datetime.utcnow()
+            }
+            
+            logger.info(f"Started streaming transcription for session: {session_id}")
+            
+            await websocket_manager.send_message(websocket, {
+                "type": "transcription_started",
+                "session_id": session_id,
+                "message": "Real-time transcription started"
+            })
+        else:
+            await websocket_manager.send_error(websocket, "Failed to start transcription service")
+        
+    except Exception as e:
+        logger.error(f"Error starting streaming transcription: {str(e)}")
+        await websocket_manager.send_error(websocket, str(e))
+
+async def stop_streaming_transcription(websocket: WebSocket, message_data: dict):
+    """Stop real-time transcription"""
+    try:
+        session_id = message_data.get("session_id")
+        if not session_id:
+            await websocket_manager.send_error(websocket, "Session ID required")
+            return
+        
+        # Stop transcription service
+        summary = await streaming_stt_service.stop_streaming_session(session_id)
+        
+        # Remove from active sessions
+        if session_id in transcription_sessions:
+            del transcription_sessions[session_id]
+        
+        logger.info(f"Stopped streaming transcription for session: {session_id}")
+        
+        await websocket_manager.send_message(websocket, {
+            "type": "transcription_stopped",
+            "session_id": session_id,
+            "summary": summary,
+            "message": "Real-time transcription stopped"
+        })
+        
+    except Exception as e:
+        logger.error(f"Error stopping streaming transcription: {str(e)}")
+        await websocket_manager.send_error(websocket, str(e))
 
 if __name__ == "__main__":
     uvicorn.run(

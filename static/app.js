@@ -1,6 +1,6 @@
 /**
- * Main Application Controller for Murf AI Voice Agent - Day 15
- * Orchestrates WebSocket communication, audio recording, and UI interactions
+ * Main Application Controller for Murf AI Voice Agent - Day 17
+ * Orchestrates WebSocket communication, audio recording, UI interactions, and real-time transcription
  */
 
 class VoiceAgent {
@@ -19,6 +19,10 @@ class VoiceAgent {
         this.isStreaming = false;
         this.streamingMode = false;
         
+        // Day 17: Transcription state
+        this.isTranscribing = false;
+        this.transcriptionEnabled = false;
+        
         // DOM elements
         this.recordBtn = document.getElementById('recordBtn');
         this.recordText = this.recordBtn.querySelector('.record-text');
@@ -27,6 +31,14 @@ class VoiceAgent {
         this.processingStages = document.getElementById('processingStages');
         this.responseAudio = document.getElementById('responseAudio');
         this.loadingOverlay = document.getElementById('loadingOverlay');
+        
+        // Day 17: Transcription DOM elements
+        this.transcriptionToggle = document.getElementById('transcriptionToggle');
+        this.transcriptionContainer = document.getElementById('transcriptionContainer');
+        this.transcriptionIndicator = document.getElementById('transcriptionIndicator');
+        this.transcriptionStatusText = document.getElementById('transcriptionStatusText');
+        this.partialTranscript = document.getElementById('partialTranscript');
+        this.finalTranscripts = document.getElementById('finalTranscripts');
         
         // Audio recording
         this.audioChunks = [];
@@ -133,6 +145,32 @@ class VoiceAgent {
             console.log('Streaming stopped:', data.stats);
         });
         
+        // Day 17: Transcription events
+        this.wsClient.on('transcription_started', (data) => {
+            this.isTranscribing = true;
+            this.updateTranscriptionStatus('active', 'Real-time transcription active');
+            console.log('Transcription started for session:', data.session_id);
+        });
+        
+        this.wsClient.on('transcription_stopped', (data) => {
+            this.isTranscribing = false;
+            this.updateTranscriptionStatus('inactive', 'Transcription stopped');
+            console.log('Transcription stopped:', data.summary);
+        });
+        
+        this.wsClient.on('partial_transcript', (data) => {
+            this.displayPartialTranscript(data.text);
+        });
+        
+        this.wsClient.on('final_transcript', (data) => {
+            this.displayFinalTranscript(data);
+        });
+        
+        this.wsClient.on('transcription_error', (data) => {
+            console.error('Transcription error:', data.error);
+            this.updateTranscriptionStatus('error', 'Transcription error occurred');
+        });
+        
         this.wsClient.on('streaming_progress', (data) => {
             this.updateStatus(`Streaming... ${data.chunk_count} chunks (${Math.round(data.total_bytes/1024)}KB)`);
         });
@@ -167,6 +205,13 @@ class VoiceAgent {
                 } else {
                     modeDescription.textContent = 'Traditional: Record → Process → Response';
                 }
+            });
+        }
+        
+        // Day 17: Transcription toggle
+        if (this.transcriptionToggle) {
+            this.transcriptionToggle.addEventListener('change', () => {
+                this.toggleTranscription();
             });
         }
         
@@ -776,6 +821,125 @@ class VoiceAgent {
         this.updateStatus(`Recording mode: ${mode}`);
         console.log(`Switched to ${mode} recording mode`);
         return this.streamingMode;
+    }
+    
+    // Day 17: Transcription Methods
+    toggleTranscription() {
+        this.transcriptionEnabled = !this.transcriptionEnabled;
+        
+        if (this.transcriptionEnabled) {
+            this.transcriptionContainer.style.display = 'block';
+            this.startTranscription();
+        } else {
+            this.transcriptionContainer.style.display = 'none';
+            this.stopTranscription();
+        }
+        
+        const status = this.transcriptionEnabled ? 'enabled' : 'disabled';
+        console.log(`Transcription ${status}`);
+    }
+    
+    startTranscription() {
+        if (!this.currentSessionId) {
+            console.error('No session ID available for starting transcription');
+            return;
+        }
+        
+        this.wsClient.sendMessage({
+            type: 'start_transcription',
+            session_id: this.currentSessionId
+        });
+        
+        this.updateTranscriptionStatus('starting', 'Starting transcription...');
+        console.log('Started transcription for session:', this.currentSessionId);
+    }
+    
+    stopTranscription() {
+        if (!this.currentSessionId) {
+            console.error('No session ID available for stopping transcription');
+            return;
+        }
+        
+        this.wsClient.sendMessage({
+            type: 'stop_transcription',
+            session_id: this.currentSessionId
+        });
+        
+        this.updateTranscriptionStatus('stopping', 'Stopping transcription...');
+        console.log('Stopped transcription for session:', this.currentSessionId);
+    }
+    
+    updateTranscriptionStatus(status, text) {
+        if (!this.transcriptionIndicator || !this.transcriptionStatusText) return;
+        
+        this.transcriptionIndicator.className = 'transcription-indicator';
+        this.transcriptionStatusText.textContent = text;
+        
+        switch (status) {
+            case 'active':
+                this.transcriptionIndicator.classList.add('active');
+                break;
+            case 'error':
+                this.transcriptionIndicator.style.color = '#ff4444';
+                break;
+            default:
+                this.transcriptionIndicator.style.color = '#666';
+        }
+    }
+    
+    displayPartialTranscript(text) {
+        if (!this.partialTranscript) return;
+        this.partialTranscript.textContent = text;
+    }
+    
+    displayFinalTranscript(data) {
+        if (!this.finalTranscripts) return;
+        
+        // Remove placeholder if it exists
+        const placeholder = this.finalTranscripts.querySelector('.transcript-placeholder');
+        if (placeholder) {
+            placeholder.remove();
+        }
+        
+        // Clear partial transcript
+        if (this.partialTranscript) {
+            this.partialTranscript.textContent = '';
+        }
+        
+        // Create transcript item
+        const transcriptItem = document.createElement('div');
+        transcriptItem.className = 'transcript-item';
+        
+        const transcriptText = document.createElement('div');
+        transcriptText.className = 'transcript-text';
+        transcriptText.textContent = data.text;
+        
+        const transcriptMeta = document.createElement('div');
+        transcriptMeta.className = 'transcript-meta';
+        
+        const timestamp = new Date(data.timestamp).toLocaleTimeString();
+        const confidence = typeof data.confidence === 'number' ? 
+            (data.confidence * 100).toFixed(1) + '%' : 'N/A';
+        
+        transcriptMeta.innerHTML = `
+            <span class="transcript-time">${timestamp}</span>
+            <span class="transcript-confidence">Confidence: ${confidence}</span>
+        `;
+        
+        transcriptItem.appendChild(transcriptText);
+        transcriptItem.appendChild(transcriptMeta);
+        
+        // Add to top of transcripts
+        this.finalTranscripts.insertBefore(transcriptItem, this.finalTranscripts.firstChild);
+        
+        // Limit to 10 transcripts
+        const transcripts = this.finalTranscripts.querySelectorAll('.transcript-item');
+        if (transcripts.length > 10) {
+            transcripts[transcripts.length - 1].remove();
+        }
+        
+        // Scroll to show latest
+        transcriptItem.scrollIntoView({ behavior: 'smooth' });
     }
     
     cleanup() {

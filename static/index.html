@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Murf AI Voice Agent - Day 16</title>
+    <title>Murf AI Voice Agent - Day 17</title>
     <link rel="stylesheet" href="/static/styles.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -16,7 +16,7 @@
             <div class="header-content">
                 <h1 class="app-title">
                     🎤 Murf AI Voice Agent
-                    <span class="version-badge">Day 16</span>
+                    <span class="version-badge">Day 17</span>
                 </h1>
                 <div class="connection-status">
                     <div class="status-indicator" id="connectionStatus">
@@ -81,6 +81,22 @@
                     </div>
                 </div>
 
+                <!-- Day 17: Real-time Transcription Controls -->
+                <div class="transcription-controls">
+                    <div class="transcription-toggle">
+                        <label class="toggle-label">
+                            <input type="checkbox" id="transcriptionToggle" class="toggle-checkbox">
+                            <div class="toggle-slider">
+                                <span class="toggle-text">Transcription OFF</span>
+                                <span class="toggle-text">Real-time ON</span>
+                            </div>
+                        </label>
+                        <div class="mode-description" id="transcriptionDescription">
+                            Enable real-time speech-to-text transcription
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Status Display -->
                 <div class="status-display" id="statusDisplay">
                     <div class="status-message" id="statusMessage">Ready to listen</div>
@@ -122,9 +138,26 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Day 17: Real-time Transcription Display -->
+            <div class="transcription-container" id="transcriptionContainer" style="display: none;">
+                <div class="transcription-header">
+                    <h3>🎤 Real-time Transcription</h3>
+                    <div class="transcription-status">
+                        <span class="transcription-indicator" id="transcriptionIndicator">●</span>
+                        <span class="transcription-status-text" id="transcriptionStatusText">Inactive</span>
+                    </div>
+                </div>
+                <div class="transcription-display" id="transcriptionDisplay">
+                    <div class="partial-transcript" id="partialTranscript"></div>
+                    <div class="final-transcripts" id="finalTranscripts">
+                        <div class="transcript-placeholder">
+                            Real-time transcription will appear here when enabled...
+                        </div>
+                    </div>
+                </div>
+            </div>
         </main>
-
-
 
         <!-- Debug Panel (Collapsible) -->
         <div class="debug-panel" id="debugPanel">

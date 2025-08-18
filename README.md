@@ -1,29 +1,35 @@
-# 🎤 Murf AI Conversational Bot - Day 16
+# 🎤 Murf AI Conversational Bot - Day 17
 
-A sophisticated AI-powered conversational agent with real-time audio streaming capabilities, built with FastAPI and modern web technologies. This project combines Murf AI (TTS), AssemblyAI (STT), and Perplexity AI (LLM) to create a seamless voice interaction experience with real-time WebSocket audio streaming.
+A sophisticated AI-powered conversational agent with real-time audio streaming and transcription capabilities, built with FastAPI and modern web technologies. This project combines Murf AI (TTS), AssemblyAI SDK (Streaming STT), and Perplexity AI (LLM) to create a seamless voice interaction experience with real-time audio streaming and live transcription.
 
 ## ✨ Key Features
 
 ### 🎙️ Voice Interaction
 - Real-time speech-to-text and text-to-speech
-- **NEW**: Real-time audio streaming to server
-- **NEW**: Dual recording modes (Traditional vs Streaming)
+- **Real-time audio streaming to server
+- **Dual recording modes (Traditional vs Streaming)
+- **NEW**: Real-time transcription with AssemblyAI SDK
+- **NEW**: Live partial and final transcript display
 - Multiple voice options with preview
 - Noise cancellation and audio processing
 - Session-based conversation memory
 
 ### 🎨 Modern UI
 - Royal Black theme with elegant blue accents
-- **NEW**: Streaming mode toggle with visual feedback
+- **Streaming mode toggle with visual feedback
+- **NEW**: Real-time transcription panel with live updates
+- **NEW**: Transcription controls and status indicators
 - Responsive design for all devices
 - Real-time audio visualization
 - Interactive chat interface
-- **NEW**: Live streaming progress indicators
+- **Live streaming progress indicators
 
 ### 🛠️ Technical Highlights
 - FastAPI backend with WebSocket support
-- **NEW**: Binary audio streaming via WebSocket
-- **NEW**: Real-time file persistence and session management
+- **Binary audio streaming via WebSocket
+- **Real-time file persistence and session management
+- **NEW**: AssemblyAI Python SDK integration for streaming STT
+- **NEW**: Real-time transcription with 16kHz mono PCM audio format
 - Modular service architecture
 - Comprehensive error handling
 - Session persistence
@@ -222,17 +228,27 @@ This project represents the **30 Days of AI Agent Challenge by Murf AI** - an in
 - **Audio file persistence** saved to `recordings/` directory
 - **Comprehensive streaming statistics** including duration and average chunk size
 
-## 🏗️ Architecture (Day 16 - Audio Streaming Enhanced)
+### 🎤 Day 17: Real-Time Audio Transcription
+- **AssemblyAI Python SDK integration** for streaming speech-to-text
+- **Real-time transcription** with live partial and final results
+- **16kHz, 16-bit, mono PCM audio format** for optimal transcription accuracy
+- **Live transcription display** with confidence scores and timestamps
+- **Transcription controls** with toggle and status indicators
+- **Console and UI output** for comprehensive transcription monitoring
+- **Session-based transcription management** with automatic cleanup
+
+## 🏗️ Architecture (Day 17 - Real-Time Transcription Enhanced)
 
 ```
 Murf-ai/
-├── main.py                     # FastAPI application entry point with audio streaming
+├── main.py                     # FastAPI application entry point with audio streaming & transcription
 ├── recordings/                 # Audio streaming output directory
 │   └── stream_[session]_[timestamp].webm  # Streamed audio files
 ├── services/                   # Service layer
 │   ├── __init__.py
 │   ├── websocket_manager.py   # WebSocket connection management
 │   ├── stt_service.py         # AssemblyAI integration
+│   ├── streaming_stt_service.py # Real-time transcription service (Day 17)
 │   ├── tts_service.py         # Murf AI integration
 │   └── llm_service.py         # Perplexity AI integration
 ├── models/                     # Pydantic models

@@ -13,6 +13,9 @@ pydantic>=2.8.0
 # Environment variables
 python-dotenv==1.0.0
 
+# AssemblyAI SDK for real-time transcription (Day 17)
+assemblyai==0.33.0
+
 # Audio processing (if needed for future enhancements)
 # python-multipart==0.0.6  # For file uploads if needed
 
