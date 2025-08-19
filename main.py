@@ -1,611 +1,332 @@
-"""
-Murf AI Voice Agent - Day 17: Real-Time Audio Transcription
-A sophisticated AI-powered conversational agent with real-time WebSocket audio streaming and transcription.
-"""
-
-import os
-import uuid
-import json
-import logging
-from typing import Dict, List, Optional
-from datetime import datetime
-
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+# main.py
+from fastapi import FastAPI, Request, UploadFile, File, Path, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
-from dotenv import load_dotenv
-import uvicorn
+from fastapi.templating import Jinja2Templates
+from typing import Dict, List, Any, Type
+import logging
+from pathlib import Path as PathLib
+from uuid import uuid4
+import json
+import asyncio
 
-from services.websocket_manager import WebSocketManager
-from services.stt_service import STTService
-from services.streaming_stt_service import StreamingSTTService
-from services.tts_service import TTSService
-from services.llm_service import LLMService
-from models.message_models import (
-    ChatMessage, 
-    WebSocketMessage, 
-    SessionInfo,
-    ErrorResponse
+# Import the config file FIRST to load dotenv and configure APIs
+import config
+from services import stt, llm, tts
+from schemas import TTSRequest
+
+# AssemblyAI streaming imports
+import assemblyai as aai
+from assemblyai.streaming.v3 import (
+    BeginEvent,
+    StreamingClient,
+    StreamingClientOptions,
+    StreamingError,
+    StreamingEvents,
+    StreamingParameters,
+    TerminationEvent,
+    TurnEvent,
 )
-
-# Load environment variables
-load_dotenv(".env")
 
 # Configure logging
-logging.basicConfig(
-    level=getattr(logging, os.getenv("LOG_LEVEL", "INFO")),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Initialize FastAPI app
-app = FastAPI(
-    title="Murf AI Voice Agent",
-    description="AI-powered conversational agent with WebSocket support",
-    version="2.2.0 (Day 17)"
-)
+app = FastAPI()
 
-# Mount static files
+# Mount static for CSS/JS and templates for HTML
 app.mount("/static", StaticFiles(directory="static"), name="static")
+templates = Jinja2Templates(directory="templates")
 
-# Initialize services
-websocket_manager = WebSocketManager()
-stt_service = STTService()
-streaming_stt_service = StreamingSTTService()
-tts_service = TTSService()
-llm_service = LLMService()
+# In-memory store for chat histories.
+chat_histories: Dict[str, List[Dict[str, Any]]] = {}
 
-# Session storage (in production, use Redis or database)
-sessions: Dict[str, List[ChatMessage]] = {}
+# Base directory and uploads folder
+BASE_DIR = PathLib(__file__).resolve().parent
+UPLOADS_DIR = BASE_DIR / "uploads"
+UPLOADS_DIR.mkdir(exist_ok=True)
 
-# Audio streaming sessions
-streaming_sessions: Dict[str, dict] = {}
 
-# Transcription streaming sessions
-transcription_sessions: Dict[str, dict] = {}
+@app.get("/")
+async def home(request: Request):
+    """Serves the main HTML page."""
+    return templates.TemplateResponse("index.html", {"request": request})
 
-@app.get("/", response_class=HTMLResponse)
-async def get_homepage():
-    """Serve the main HTML page"""
+
+@app.post("/agent/chat/{session_id}")
+async def agent_chat(
+    session_id: str = Path(..., description="The unique ID for the chat session."),
+    audio_file: UploadFile = File(...)
+):
+    """
+    Handles a turn in the conversation, including history.
+    STT -> Add to History -> LLM -> Add to History -> TTS
+    """
+    fallback_audio_path = "static/fallback.mp3"
+
+    # Check for keys by importing them from the config module
+    if not all([config.PERPLEXITY_API_KEY, config.ASSEMBLYAI_API_KEY, config.MURF_API_KEY]):
+        logging.warning("One or more API keys are not configured. Returning fallback audio.")
+        return FileResponse(fallback_audio_path, media_type="audio/mpeg", headers={"X-Error": "true"})
+
     try:
-        with open("static/index.html", "r") as f:
-            return f.read()
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="Frontend not found")
+        # Step 1: Transcribe audio to text
+        user_query_text = stt.transcribe_audio(audio_file)
+        logging.info(f"User Query (session {session_id}): {user_query_text}")
 
-@app.get("/health")
-async def health_check():
-    """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
-        "services": {
-            "stt": stt_service.is_healthy(),
-            "streaming_stt": streaming_stt_service.is_healthy(),
-            "tts": tts_service.is_healthy(),
-            "llm": llm_service.is_healthy()
-        }
-    }
+        # Step 2: Retrieve history and get a response from the LLM
+        session_history = chat_histories.get(session_id, [])
+        llm_response_text, updated_history = llm.get_llm_response(user_query_text, session_history)
+        logging.info(f"LLM Response (session {session_id}): {llm_response_text}")
 
-@app.get("/test/murf")
-async def test_murf_connection():
-    """Test Murf AI connection and configuration"""
-    try:
-        connection_status = await tts_service.check_murf_api_connection()
-        return {
-            "service": "Murf AI TTS",
-            "timestamp": datetime.utcnow().isoformat(),
-            **connection_status
-        }
+        # Step 3: Update the chat history
+        chat_histories[session_id] = updated_history
+
+        # Step 4: Convert the LLM's text response to speech
+        audio_url = tts.convert_text_to_speech(llm_response_text)
+
+        if audio_url:
+            return JSONResponse(content={"audio_url": audio_url})
+        else:
+            raise Exception("TTS service did not return an audio file.")
+
     except Exception as e:
-        logger.error(f"Error testing Murf connection: {str(e)}")
-        return {
-            "service": "Murf AI TTS",
+        logging.error(f"An error occurred in session {session_id}: {e}")
+        return FileResponse(fallback_audio_path, media_type="audio/mpeg", headers={"X-Error": "true"})
+
+
+@app.post("/tts")
+async def tts_endpoint(request: TTSRequest):
+    """Endpoint for the simple Text-to-Speech utility."""
+    try:
+        audio_url = tts.convert_text_to_speech(request.text, request.voiceId)
+        if audio_url:
+            return JSONResponse(content={"audio_url": audio_url})
+        else:
+            return JSONResponse(status_code=500, content={"error": "No audio URL in the API response."})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": f"TTS generation failed: {e}"})
+
+
+@app.get("/voices")
+async def get_voices():
+    """Fetches the list of available voices from Murf AI."""
+    try:
+        voices = tts.get_available_voices()
+        return JSONResponse(content={"voices": voices})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": f"Failed to fetch voices: {e}"})
+
+
+@app.get("/test/perplexity")
+async def test_perplexity():
+    """Test endpoint to verify Perplexity AI integration."""
+    try:
+        # Test the LLM service
+        response, history = llm.get_llm_response("Hello, can you respond with a simple greeting?", [])
+        return JSONResponse(content={
+            "status": "success",
+            "response": response,
+            "history_length": len(history)
+        })
+    except Exception as e:
+        return JSONResponse(status_code=500, content={
             "status": "error",
-            "error": str(e),
-            "timestamp": datetime.utcnow().isoformat()
-        }
+            "error": str(e)
+        })
 
-@app.get("/session/new")
-async def create_session():
-    """Create a new session"""
-    session_id = str(uuid.uuid4())
-    sessions[session_id] = []
-    logger.info(f"Created new session: {session_id}")
-    return SessionInfo(session_id=session_id, message_count=0)
 
-@app.get("/session/{session_id}/history")
-async def get_session_history(session_id: str):
-    """Get chat history for a session"""
-    if session_id not in sessions:
-        raise HTTPException(status_code=404, detail="Session not found")
-    
-    return {
-        "session_id": session_id,
-        "messages": sessions[session_id],
-        "message_count": len(sessions[session_id])
-    }
+@app.get("/test/assemblyai")
+async def test_assemblyai():
+    """Test endpoint to verify AssemblyAI configuration."""
+    try:
+        if config.ASSEMBLYAI_API_KEY:
+            return JSONResponse(content={
+                "status": "success",
+                "message": "AssemblyAI API key is configured"
+            })
+        else:
+            return JSONResponse(status_code=500, content={
+                "status": "error",
+                "message": "AssemblyAI API key not configured"
+            })
+    except Exception as e:
+        return JSONResponse(status_code=500, content={
+            "status": "error",
+            "error": str(e)
+        })
 
-@app.delete("/session/{session_id}")
-async def delete_session(session_id: str):
-    """Delete a session and its history"""
-    if session_id in sessions:
-        del sessions[session_id]
-        logger.info(f"Deleted session: {session_id}")
-        return {"message": "Session deleted successfully"}
-    else:
-        raise HTTPException(status_code=404, detail="Session not found")
 
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    """
-    Main WebSocket endpoint for real-time voice agent communication
-    Day 15 Feature: Real-time bidirectional communication
-    Day 16 Feature: Real-time audio streaming
-    """
-    session_id = None
-    try:
-        await websocket_manager.connect(websocket)
-        logger.info("WebSocket connection established")
+async def websocket_audio_streaming(websocket: WebSocket):
+    """Receive PCM audio chunks from client and transcribe in real-time using AssemblyAI with turn detection."""
+    await websocket.accept()
+    file_id = uuid4().hex
+    file_path = UPLOADS_DIR / f"streamed_{file_id}.pcm"
+
+    # Check if AssemblyAI API key is configured
+    if not config.ASSEMBLYAI_API_KEY:
+        logging.error("ASSEMBLYAI_API_KEY not configured")
+        await websocket.send_text(json.dumps({
+            "type": "error",
+            "message": "AssemblyAI API key not configured"
+        }))
+        await websocket.close(code=1000, reason="AssemblyAI API key not configured")
+        return
+
+    # Create a queue for transcription messages
+    transcription_queue = asyncio.Queue()
+
+    # Initialize AssemblyAI StreamingClient
+    client = StreamingClient(
+        StreamingClientOptions(
+            api_key=config.ASSEMBLYAI_API_KEY,
+            api_host="streaming.assemblyai.com",
+        )
+    )
+
+    # Define event handlers
+    def on_begin(self: Type[StreamingClient], event: BeginEvent):
+        logging.info(f"Transcription session started: {event.id}")
+        try:
+            transcription_queue.put_nowait({
+                "type": "status",
+                "message": "Transcription session started - speak now!"
+            })
+        except asyncio.QueueFull:
+            logging.warning("Transcription queue is full")
+
+    def on_turn(self: Type[StreamingClient], event: TurnEvent):
+        transcript_text = event.transcript.strip()
+        logging.info(f"Real-time transcript: '{transcript_text}'")
+        print(f"TRANSCRIPTION: '{transcript_text}'")
         
-        # Send welcome message
-        await websocket_manager.send_message(websocket, {
-            "type": "connection",
-            "message": "Connected to Murf AI Voice Agent",
-            "timestamp": datetime.utcnow().isoformat()
-        })
+        # Send partial transcriptions for real-time feedback
+        if transcript_text and not event.end_of_turn:
+            try:
+                transcription_queue.put_nowait({
+                    "type": "partial_transcription",
+                    "text": transcript_text,
+                    "is_final": False,
+                    "end_of_turn": False
+                })
+            except asyncio.QueueFull:
+                logging.warning("Transcription queue is full")
         
+        # Send final transcription when turn ends
+        if event.end_of_turn and transcript_text:
+            logging.info(f"End of turn detected. Final transcript: '{transcript_text}'")
+            print(f"END OF TURN - FINAL TRANSCRIPTION: '{transcript_text}'")
+            
+            try:
+                transcription_queue.put_nowait({
+                    "type": "transcription",
+                    "text": transcript_text,
+                    "is_final": True,
+                    "end_of_turn": True
+                })
+                
+                # Send explicit end-of-turn notification
+                transcription_queue.put_nowait({
+                    "type": "turn_end",
+                    "message": "Turn completed"
+                })
+            except asyncio.QueueFull:
+                logging.warning("Transcription queue is full")
+
+    def on_terminated(self: Type[StreamingClient], event: TerminationEvent):
+        logging.info(f"Transcription session terminated: {event.audio_duration_seconds} seconds of audio processed")
+
+    def on_error(self: Type[StreamingClient], error: StreamingError):
+        logging.error(f"AssemblyAI streaming error: {error}")
+        try:
+            transcription_queue.put_nowait({
+                "type": "error",
+                "message": f"Transcription error: {error}"
+            })
+        except asyncio.QueueFull:
+            logging.warning("Transcription queue is full")
+
+    # Register event handlers
+    client.on(StreamingEvents.Begin, on_begin)
+    client.on(StreamingEvents.Turn, on_turn)
+    client.on(StreamingEvents.Termination, on_terminated)
+    client.on(StreamingEvents.Error, on_error)
+
+    # Task to send transcription messages to client
+    async def send_transcriptions():
         while True:
-            # Receive message (could be text or binary)
-            message = await websocket.receive()
-            
-            if message['type'] == 'websocket.receive':
-                if 'text' in message:
-                    # Handle text message
-                    try:
-                        message_data = json.loads(message['text'])
-                        logger.info(f"Received WebSocket message: {message_data.get('type', 'unknown')}")
-                        await handle_websocket_message(websocket, message_data)
-                    except json.JSONDecodeError as e:
-                        logger.error(f"Invalid JSON received: {e}")
-                        await websocket_manager.send_error(websocket, "Invalid JSON format")
-                        
-                elif 'bytes' in message:
-                    # Handle binary audio data
-                    binary_data = message['bytes']
-                    logger.debug(f"Received binary audio data: {len(binary_data)} bytes")
-                    await handle_audio_stream(websocket, binary_data)
-            
-    except WebSocketDisconnect:
-        logger.info("WebSocket connection closed")
-        if session_id:
-            await websocket_manager.send_to_session(session_id, {
-                "type": "user_disconnected",
-                "session_id": session_id
-            })
-    except Exception as e:
-        logger.error(f"WebSocket error: {str(e)}")
-        await websocket_manager.send_error(websocket, str(e))
-    finally:
-        # Cleanup streaming sessions for this websocket
-        sessions_to_remove = []
-        for sid, session in streaming_sessions.items():
-            if session["websocket"] == websocket:
-                sessions_to_remove.append(sid)
-                # Close file handle if still open
-                try:
-                    session["file_handle"].close()
-                    logger.info(f"Closed streaming session {sid} on disconnect")
-                except:
-                    pass
-        
-        for sid in sessions_to_remove:
-            del streaming_sessions[sid]
-        
-        # Cleanup transcription sessions for this websocket
-        transcription_sessions_to_remove = []
-        for sid, session in transcription_sessions.items():
-            if session["websocket"] == websocket:
-                transcription_sessions_to_remove.append(sid)
-                # Stop transcription service
-                try:
-                    await streaming_stt_service.stop_streaming_session(sid)
-                    logger.info(f"Stopped transcription session {sid} on disconnect")
-                except:
-                    pass
-        
-        for sid in transcription_sessions_to_remove:
-            del transcription_sessions[sid]
-            
-        websocket_manager.disconnect(websocket)
-
-async def handle_websocket_message(websocket: WebSocket, message_data: dict):
-    """Handle different types of WebSocket messages"""
-    message_type = message_data.get("type")
-    
-    try:
-        if message_type == "session_create":
-            session_id = str(uuid.uuid4())
-            sessions[session_id] = []
-            await websocket_manager.send_message(websocket, {
-                "type": "session_created",
-                "session_id": session_id,
-                "message": "New session created successfully"
-            })
-            
-        elif message_type == "session_join":
-            session_id = message_data.get("session_id")
-            if session_id not in sessions:
-                sessions[session_id] = []
-            
-            await websocket_manager.send_message(websocket, {
-                "type": "session_joined",
-                "session_id": session_id,
-                "history": sessions[session_id],
-                "message": f"Joined session {session_id}"
-            })
-            
-        elif message_type == "echo":
-            # Simple echo for testing (Day 15 requirement)
-            await websocket_manager.send_message(websocket, {
-                "type": "echo_response",
-                "original_message": message_data.get("message", ""),
-                "timestamp": datetime.utcnow().isoformat()
-            })
-            
-        elif message_type == "voice_message":
-            await process_voice_message(websocket, message_data)
-            
-        elif message_type == "text_message":
-            await process_text_message(websocket, message_data)
-            
-        elif message_type == "start_streaming":
-            await start_audio_streaming(websocket, message_data)
-            
-        elif message_type == "stop_streaming":
-            await stop_audio_streaming(websocket, message_data)
-            
-        elif message_type == "start_transcription":
-            await start_streaming_transcription(websocket, message_data)
-            
-        elif message_type == "stop_transcription":
-            await stop_streaming_transcription(websocket, message_data)
-            
-        else:
-            await websocket_manager.send_error(websocket, f"Unknown message type: {message_type}")
-            
-    except Exception as e:
-        logger.error(f"Error handling message type {message_type}: {str(e)}")
-        await websocket_manager.send_error(websocket, str(e))
-
-async def process_voice_message(websocket: WebSocket, message_data: dict):
-    """Process voice message through the AI pipeline"""
-    session_id = message_data.get("session_id")
-    audio_data = message_data.get("audio_data")  # Base64 encoded audio
-    
-    if not session_id or not audio_data:
-        await websocket_manager.send_error(websocket, "Missing session_id or audio_data")
-        return
-    
-    try:
-        # Update client on processing status
-        await websocket_manager.send_message(websocket, {
-            "type": "processing_status",
-            "stage": "transcription",
-            "message": "Converting speech to text..."
-        })
-        
-        # Speech-to-Text
-        transcript = await stt_service.transcribe_audio_base64(audio_data)
-        
-        if not transcript:
-            await websocket_manager.send_error(websocket, "Could not transcribe audio")
-            return
-        
-        await websocket_manager.send_message(websocket, {
-            "type": "transcription_complete",
-            "transcript": transcript
-        })
-        
-        # Process as text message
-        await process_ai_response(websocket, session_id, transcript)
-        
-    except Exception as e:
-        logger.error(f"Error processing voice message: {str(e)}")
-        await websocket_manager.send_error(websocket, str(e))
-
-async def process_text_message(websocket: WebSocket, message_data: dict):
-    """Process text message through the AI pipeline"""
-    session_id = message_data.get("session_id")
-    text = message_data.get("text")
-    
-    if not session_id or not text:
-        await websocket_manager.send_error(websocket, "Missing session_id or text")
-        return
-    
-    await process_ai_response(websocket, session_id, text)
-
-async def process_ai_response(websocket: WebSocket, session_id: str, user_input: str):
-    """Process user input through LLM and generate voice response"""
-    try:
-        # Ensure session exists
-        if session_id not in sessions:
-            sessions[session_id] = []
-        
-        # Add user message to history
-        user_message = ChatMessage(
-            role="user",
-            content=user_input,
-            timestamp=datetime.utcnow()
-        )
-        sessions[session_id].append(user_message)
-        
-        # Update client
-        await websocket_manager.send_message(websocket, {
-            "type": "processing_status",
-            "stage": "thinking",
-            "message": "AI is thinking..."
-        })
-        
-        # Get AI response
-        chat_history = [{"role": msg.role, "content": msg.content} for msg in sessions[session_id]]
-        ai_response = await llm_service.get_response(user_input, chat_history)
-        
-        # Add AI response to history
-        ai_message = ChatMessage(
-            role="assistant",
-            content=ai_response,
-            timestamp=datetime.utcnow()
-        )
-        sessions[session_id].append(ai_message)
-        
-        # Send text response
-        await websocket_manager.send_message(websocket, {
-            "type": "ai_response",
-            "text": ai_response,
-            "session_id": session_id
-        })
-        
-        # Generate voice response
-        await websocket_manager.send_message(websocket, {
-            "type": "processing_status",
-            "stage": "voice_generation",
-            "message": "Generating voice response..."
-        })
-        
-        audio_url = await tts_service.generate_speech(ai_response)
-        
-        await websocket_manager.send_message(websocket, {
-            "type": "voice_response",
-            "audio_url": audio_url,
-            "text": ai_response,
-            "session_id": session_id
-        })
-        
-    except Exception as e:
-        logger.error(f"Error processing AI response: {str(e)}")
-        await websocket_manager.send_error(websocket, str(e))
-
-async def start_audio_streaming(websocket: WebSocket, message_data: dict):
-    """Initialize audio streaming session"""
-    try:
-        session_id = message_data.get("session_id")
-        if not session_id:
-            await websocket_manager.send_error(websocket, "Session ID required for streaming")
-            return
-        
-        # Create audio file path
-        import os
-        os.makedirs("recordings", exist_ok=True)
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        filename = f"recordings/stream_{session_id}_{timestamp}.webm"
-        
-        # Initialize streaming session
-        streaming_sessions[session_id] = {
-            "websocket": websocket,
-            "filename": filename,
-            "file_handle": open(filename, "wb"),
-            "start_time": datetime.utcnow(),
-            "chunk_count": 0,
-            "total_bytes": 0
-        }
-        
-        logger.info(f"Started audio streaming for session {session_id} -> {filename}")
-        
-        await websocket_manager.send_message(websocket, {
-            "type": "streaming_started",
-            "session_id": session_id,
-            "filename": filename,
-            "message": "Audio streaming started"
-        })
-        
-    except Exception as e:
-        logger.error(f"Error starting audio streaming: {str(e)}")
-        await websocket_manager.send_error(websocket, str(e))
-
-async def stop_audio_streaming(websocket: WebSocket, message_data: dict):
-    """Stop audio streaming and finalize file"""
-    try:
-        session_id = message_data.get("session_id")
-        if not session_id or session_id not in streaming_sessions:
-            await websocket_manager.send_error(websocket, "No active streaming session found")
-            return
-        
-        session = streaming_sessions[session_id]
-        
-        # Close file handle
-        session["file_handle"].close()
-        
-        # Calculate session stats
-        duration = datetime.utcnow() - session["start_time"]
-        stats = {
-            "filename": session["filename"],
-            "duration_seconds": duration.total_seconds(),
-            "total_chunks": session["chunk_count"],
-            "total_bytes": session["total_bytes"],
-            "avg_chunk_size": session["total_bytes"] / max(session["chunk_count"], 1)
-        }
-        
-        logger.info(f"Stopped audio streaming for session {session_id}: {stats}")
-        
-        # Remove from active sessions
-        del streaming_sessions[session_id]
-        
-        await websocket_manager.send_message(websocket, {
-            "type": "streaming_stopped",
-            "session_id": session_id,
-            "stats": stats,
-            "message": f"Audio saved to {stats['filename']}"
-        })
-        
-    except Exception as e:
-        logger.error(f"Error stopping audio streaming: {str(e)}")
-        await websocket_manager.send_error(websocket, str(e))
-
-async def handle_audio_stream(websocket: WebSocket, audio_data: bytes):
-    """Handle incoming streaming audio data"""
-    try:
-        # Find the streaming session for this websocket
-        session_id = None
-        for sid, session in streaming_sessions.items():
-            if session["websocket"] == websocket:
-                session_id = sid
+            try:
+                message = await asyncio.wait_for(transcription_queue.get(), timeout=0.1)
+                await websocket.send_text(json.dumps(message))
+                transcription_queue.task_done()
+            except asyncio.TimeoutError:
+                continue
+            except Exception as e:
+                logging.error(f"Error sending transcription: {e}")
                 break
-        
-        if not session_id:
-            logger.warning("Received audio data but no active streaming session found")
-            return
-        
-        session = streaming_sessions[session_id]
-        
-        # Write audio data to file
-        session["file_handle"].write(audio_data)
-        session["file_handle"].flush()  # Ensure data is written
-        
-        # Update session stats
-        session["chunk_count"] += 1
-        session["total_bytes"] += len(audio_data)
-        
-        # Day 17: Stream audio to transcription service if transcription is active
-        if session_id in transcription_sessions:
-            await streaming_stt_service.stream_audio_chunk(session_id, audio_data)
-        
-        # Send progress update every 10 chunks
-        if session["chunk_count"] % 10 == 0:
-            await websocket_manager.send_message(websocket, {
-                "type": "streaming_progress",
-                "session_id": session_id,
-                "chunk_count": session["chunk_count"],
-                "total_bytes": session["total_bytes"],
-                "chunk_size": len(audio_data)
-            })
-        
-        logger.debug(f"Received audio chunk {session['chunk_count']}: {len(audio_data)} bytes")
-        
-    except Exception as e:
-        logger.error(f"Error handling audio stream: {str(e)}")
-        # Don't send error message here to avoid disrupting the stream
 
-async def start_streaming_transcription(websocket: WebSocket, message_data: dict):
-    """Start real-time transcription for streaming audio"""
+    # Start the transcription sender task
+    sender_task = asyncio.create_task(send_transcriptions())
+
+    # Connect to AssemblyAI streaming service
     try:
-        session_id = message_data.get("session_id")
-        if not session_id:
-            await websocket_manager.send_error(websocket, "Session ID required for transcription")
-            return
-        
-        # Define callbacks for transcription events
-        async def on_partial_transcript(data):
-            """Handle partial transcription results"""
-            await websocket_manager.send_message(websocket, {
-                "type": "partial_transcript",
-                "session_id": data["session_id"],
-                "text": data["text"],
-                "confidence": data["confidence"],
-                "timestamp": data["timestamp"]
-            })
-        
-        async def on_final_transcript(data):
-            """Handle final transcription results"""
-            await websocket_manager.send_message(websocket, {
-                "type": "final_transcript",
-                "session_id": data["session_id"],
-                "text": data["text"],
-                "confidence": data["confidence"],
-                "timestamp": data["timestamp"]
-            })
-        
-        async def on_transcription_error(data):
-            """Handle transcription errors"""
-            await websocket_manager.send_message(websocket, {
-                "type": "transcription_error",
-                "session_id": data["session_id"],
-                "error": data["error"],
-                "timestamp": data["timestamp"]
-            })
-        
-        # Start streaming transcription session
-        success = await streaming_stt_service.start_streaming_session(
-            session_id=session_id,
-            on_partial_transcript=on_partial_transcript,
-            on_final_transcript=on_final_transcript,
-            on_error=on_transcription_error
+        client.connect(
+            StreamingParameters(
+                sample_rate=16000,
+                format_turns=True,
+                enable_extra_session_information=True,
+            )
         )
         
-        if success:
-            # Store transcription session
-            transcription_sessions[session_id] = {
-                "websocket": websocket,
-                "started_at": datetime.utcnow()
-            }
-            
-            logger.info(f"Started streaming transcription for session: {session_id}")
-            
-            await websocket_manager.send_message(websocket, {
-                "type": "transcription_started",
-                "session_id": session_id,
-                "message": "Real-time transcription started"
-            })
-        else:
-            await websocket_manager.send_error(websocket, "Failed to start transcription service")
-        
-    except Exception as e:
-        logger.error(f"Error starting streaming transcription: {str(e)}")
-        await websocket_manager.send_error(websocket, str(e))
+        logging.info("Connected to AssemblyAI streaming service with turn detection enabled")
+        await websocket.send_text(json.dumps({
+            "type": "status",
+            "message": "Connected to transcription service - start speaking!"
+        }))
 
-async def stop_streaming_transcription(websocket: WebSocket, message_data: dict):
-    """Stop real-time transcription"""
-    try:
-        session_id = message_data.get("session_id")
-        if not session_id:
-            await websocket_manager.send_error(websocket, "Session ID required")
-            return
-        
-        # Stop transcription service
-        summary = await streaming_stt_service.stop_streaming_session(session_id)
-        
-        # Remove from active sessions
-        if session_id in transcription_sessions:
-            del transcription_sessions[session_id]
-        
-        logger.info(f"Stopped streaming transcription for session: {session_id}")
-        
-        await websocket_manager.send_message(websocket, {
-            "type": "transcription_stopped",
-            "session_id": session_id,
-            "summary": summary,
-            "message": "Real-time transcription stopped"
-        })
-        
+        # Process audio messages
+        while True:
+            try:
+                message = await websocket.receive()
+                
+                if "bytes" in message:
+                    pcm_data = message["bytes"]
+                    logging.debug(f"Received audio chunk of size: {len(pcm_data)} bytes")
+                    
+                    # Send to AssemblyAI for transcription
+                    if len(pcm_data) > 0:
+                        client.stream(pcm_data)
+                    
+                elif message.get("text") == "EOF":
+                    logging.info("Recording finished. Closing transcription session.")
+                    break
+                    
+            except WebSocketDisconnect:
+                logging.info("Client disconnected from WebSocket")
+                break
+            except Exception as e:
+                logging.error(f"Error receiving message: {e}")
+                break
+
     except Exception as e:
-        logger.error(f"Error stopping streaming transcription: {str(e)}")
-        await websocket_manager.send_error(websocket, str(e))
+        logging.error(f"WebSocket error: {str(e)}")
+    finally:
+        # Cancel the sender task
+        sender_task.cancel()
+        
+        # Clean up AssemblyAI connection
+        try:
+            client.disconnect(terminate=True)
+        except Exception as e:
+            logging.error(f"Error disconnecting from AssemblyAI: {e}")
+        
+        # Close WebSocket connection
+        try:
+            await websocket.close()
+        except Exception as e:
+            logging.error(f"Error closing WebSocket: {e}")
+
 
 if __name__ == "__main__":
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
-        log_level="info"
-    )
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

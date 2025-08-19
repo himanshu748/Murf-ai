@@ -1,39 +1,47 @@
-# 🎤 Murf AI Conversational Bot - Day 17
+# 🎤 Murf AI Conversational Bot - Day 18 Enhanced
 
-A sophisticated AI-powered conversational agent with real-time audio streaming and transcription capabilities, built with FastAPI and modern web technologies. This project combines Murf AI (TTS), AssemblyAI SDK (Streaming STT), and Perplexity AI (LLM) to create a seamless voice interaction experience with real-time audio streaming and live transcription.
+A sophisticated AI-powered conversational agent with real-time audio streaming, turn detection, and enhanced UI, built with FastAPI and modern web technologies. This project combines Murf AI (TTS), AssemblyAI SDK (Streaming STT), and Perplexity AI (LLM) to create a seamless voice interaction experience with intelligent turn detection and a beautiful, responsive interface.
 
 ## ✨ Key Features
 
 ### 🎙️ Voice Interaction
-- Real-time speech-to-text and text-to-speech
-- **Real-time audio streaming to server
-- **Dual recording modes (Traditional vs Streaming)
-- **NEW**: Real-time transcription with AssemblyAI SDK
-- **NEW**: Live partial and final transcript display
-- Multiple voice options with preview
-- Noise cancellation and audio processing
-- Session-based conversation memory
+- **Real-time speech-to-text with turn detection**
+- **Intelligent conversation flow with Perplexity AI**
+- **High-quality text-to-speech with Murf AI**
+- **Advanced turn detection using AssemblyAI SDK**
+- **Real-time audio streaming and processing**
+- **Enhanced noise cancellation and audio optimization**
+- **Session-based conversation memory**
 
-### 🎨 Modern UI
-- Royal Black theme with elegant blue accents
-- **Streaming mode toggle with visual feedback
-- **NEW**: Real-time transcription panel with live updates
-- **NEW**: Transcription controls and status indicators
-- Responsive design for all devices
-- Real-time audio visualization
-- Interactive chat interface
-- **Live streaming progress indicators
+### 🎨 Enhanced Modern UI
+- **Beautiful gradient-based royal theme**
+- **Real-time status indicators and visual feedback**
+- **Animated transcription display with timestamps**
+- **Responsive design for all devices**
+- **Interactive conversation history**
+- **Smooth animations and transitions**
+- **Enhanced accessibility features**
+- **Keyboard shortcuts (Space to record)**
 
 ### 🛠️ Technical Highlights
-- FastAPI backend with WebSocket support
-- **Binary audio streaming via WebSocket
-- **Real-time file persistence and session management
-- **NEW**: AssemblyAI Python SDK integration for streaming STT
-- **NEW**: Real-time transcription with 16kHz mono PCM audio format
-- Modular service architecture
-- Comprehensive error handling
-- Session persistence
-- Rate limiting and security
+- **FastAPI backend with WebSocket support**
+- **Real-time binary audio streaming via WebSocket**
+- **Perplexity AI integration with 'sonar' model**
+- **AssemblyAI Python SDK for streaming STT**
+- **Enhanced error handling and fallbacks**
+- **Modular service architecture**
+- **Session persistence and management**
+- **Production-ready logging and monitoring**
+
+### 🎤 Day 18: Enhanced Turn Detection & UI
+- **Intelligent turn detection** - AI automatically detects when you stop talking
+- **Enhanced visual feedback** with status indicators and animations
+- **Real-time transcription display** with confidence scores
+- **Beautiful conversation history** with timestamps
+- **Keyboard shortcuts** for hands-free operation
+- **Enhanced error handling** with graceful degradation
+- **Mobile-responsive design** for all device types
+- **Professional gradient UI** with smooth animations
 
 ## 🚀 Getting Started
 
@@ -84,23 +92,24 @@ A sophisticated AI-powered conversational agent with real-time audio streaming a
 ## 🏗️ Project Structure
 
 ```
-murf-ai/
-├── .env                       # Environment variables
-├── main.py                   # FastAPI application
-├── requirements.txt          # Python dependencies
-├── static/                   # Frontend assets
-│   ├── index.html           # Main interface
-│   ├── voice.html           # Voice-only interface
-│   ├── script.js            # Main JavaScript
-│   ├── voice-mode.js        # Voice interface logic
-│   └── styles/              # CSS files
-├── services/                # Backend services
+Murf-ai/
+├── main.py                     # FastAPI application with enhanced WebSocket support
+├── config.py                   # Configuration and API key management
+├── schemas.py                  # Pydantic models for request/response validation
+├── requirements.txt            # Python dependencies
+├── uploads/                    # Audio file storage directory
+├── services/                   # Service layer architecture
 │   ├── __init__.py
-│   ├── stt_service.py      # Speech-to-text service
-│   ├── tts_service.py      # Text-to-speech service
-│   └── llm_service.py      # Language model service
-└── models/                  # Data models
-    └── __init__.py
+│   ├── stt.py                 # AssemblyAI speech-to-text service
+│   ├── llm.py                 # Perplexity AI integration with 'sonar' model
+│   └── tts.py                 # Murf AI text-to-speech service
+├── templates/                  # Enhanced Jinja2 templates
+│   └── index.html             # Beautiful responsive UI with animations
+├── static/                     # Enhanced frontend assets
+│   ├── script.js              # Enhanced JavaScript with turn detection
+│   └── fallback.mp3           # Fallback audio for error scenarios
+├── .env                       # Environment variables (API keys)
+└── README.md                  # This enhanced documentation
 ```
 
 ## 📚 Development Journey
@@ -237,33 +246,7 @@ This project represents the **30 Days of AI Agent Challenge by Murf AI** - an in
 - **Console and UI output** for comprehensive transcription monitoring
 - **Session-based transcription management** with automatic cleanup
 
-## 🏗️ Architecture (Day 17 - Real-Time Transcription Enhanced)
 
-```
-Murf-ai/
-├── main.py                     # FastAPI application entry point with audio streaming & transcription
-├── recordings/                 # Audio streaming output directory
-│   └── stream_[session]_[timestamp].webm  # Streamed audio files
-├── services/                   # Service layer
-│   ├── __init__.py
-│   ├── websocket_manager.py   # WebSocket connection management
-│   ├── stt_service.py         # AssemblyAI integration
-│   ├── streaming_stt_service.py # Real-time transcription service (Day 17)
-│   ├── tts_service.py         # Murf AI integration
-│   └── llm_service.py         # Perplexity AI integration
-├── models/                     # Pydantic models
-│   ├── __init__.py
-│   └── message_models.py      # WebSocket and API models
-├── static/                     # Frontend assets
-│   ├── index.html             # Main UI with streaming controls
-│   ├── styles.css             # Enhanced theme with streaming UI
-│   ├── websocket-client.js    # WebSocket client implementation
-│   ├── audio-visualizer.js    # Real-time audio visualization
-│   └── app.js                 # Main application controller with streaming
-├── .env                       # Environment variables
-├── requirements.txt           # Python dependencies
-└── README.md                 # This file
-```
 
 ## 🔧 Setup & Installation
 
