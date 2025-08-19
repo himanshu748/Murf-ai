@@ -160,7 +160,7 @@ async def websocket_endpoint(websocket: WebSocket):
             message = await websocket.receive()
             
             if message['type'] == 'websocket.receive':
-                if 'text' in message:
+                if message.get('text') is not None:
                     # Handle text message
                     try:
                         message_data = json.loads(message['text'])
@@ -170,7 +170,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         logger.error(f"Invalid JSON received: {e}")
                         await websocket_manager.send_error(websocket, "Invalid JSON format")
                         
-                elif 'bytes' in message:
+                elif message.get('bytes') is not None:
                     # Handle binary audio data
                     binary_data = message['bytes']
                     logger.debug(f"Received binary audio data: {len(binary_data)} bytes")
@@ -178,6 +178,9 @@ async def websocket_endpoint(websocket: WebSocket):
             
     except WebSocketDisconnect:
         logger.info("WebSocket connection closed")
+        # Safely determine session_id from connection metadata
+        conn_info = websocket_manager.get_connection_info(websocket) or {}
+        session_id = conn_info.get("session_id")
         if session_id:
             await websocket_manager.send_to_session(session_id, {
                 "type": "user_disconnected",
@@ -194,7 +197,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 sessions_to_remove.append(sid)
                 # Close file handle if still open
                 try:
-                    session["file_handle"].close()
+                    if session.get("file_handle"):
+                        session["file_handle"].close()
                     logger.info(f"Closed streaming session {sid} on disconnect")
                 except:
                     pass
@@ -232,6 +236,7 @@ async def handle_websocket_message(websocket: WebSocket, message_data: dict):
                 "session_id": session_id,
                 "message": "New session created successfully"
             })
+            websocket_manager.add_to_session(websocket, session_id)
             
         elif message_type == "session_join":
             session_id = message_data.get("session_id")
@@ -244,6 +249,7 @@ async def handle_websocket_message(websocket: WebSocket, message_data: dict):
                 "history": sessions[session_id],
                 "message": f"Joined session {session_id}"
             })
+            websocket_manager.add_to_session(websocket, session_id)
             
         elif message_type == "echo":
             # Simple echo for testing (Day 15 requirement)
@@ -394,20 +400,25 @@ async def start_audio_streaming(websocket: WebSocket, message_data: dict):
             await websocket_manager.send_error(websocket, "Session ID required for streaming")
             return
         
-        # Create audio file path
+        # Determine streaming data format (webm or pcm16)
+        data_format = message_data.get("data_format", "webm")
+        
+        # Create audio file path (only for webm; pcm16 not persisted by default)
         import os
         os.makedirs("recordings", exist_ok=True)
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        filename = f"recordings/stream_{session_id}_{timestamp}.webm"
+        filename = f"recordings/stream_{session_id}_{timestamp}.{ 'webm' if data_format == 'webm' else 'wav' }"
         
         # Initialize streaming session
         streaming_sessions[session_id] = {
             "websocket": websocket,
             "filename": filename,
-            "file_handle": open(filename, "wb"),
+            # Only write to file for webm format; pcm16 is forwarded to STT only
+            "file_handle": open(filename, "wb") if data_format == "webm" else None,
             "start_time": datetime.utcnow(),
             "chunk_count": 0,
-            "total_bytes": 0
+            "total_bytes": 0,
+            "data_format": data_format
         }
         
         logger.info(f"Started audio streaming for session {session_id} -> {filename}")
@@ -433,8 +444,9 @@ async def stop_audio_streaming(websocket: WebSocket, message_data: dict):
         
         session = streaming_sessions[session_id]
         
-        # Close file handle
-        session["file_handle"].close()
+        # Close file handle if present
+        if session.get("file_handle"):
+            session["file_handle"].close()
         
         # Calculate session stats
         duration = datetime.utcnow() - session["start_time"]
@@ -478,16 +490,17 @@ async def handle_audio_stream(websocket: WebSocket, audio_data: bytes):
         
         session = streaming_sessions[session_id]
         
-        # Write audio data to file
-        session["file_handle"].write(audio_data)
-        session["file_handle"].flush()  # Ensure data is written
+        # Write audio data to file only for webm format
+        if session.get("data_format") == "webm" and session.get("file_handle"):
+            session["file_handle"].write(audio_data)
+            session["file_handle"].flush()  # Ensure data is written
         
         # Update session stats
         session["chunk_count"] += 1
         session["total_bytes"] += len(audio_data)
         
-        # Day 17: Stream audio to transcription service if transcription is active
-        if session_id in transcription_sessions:
+        # Stream audio to transcription service if transcription is active and data is PCM16
+        if session_id in transcription_sessions and session.get("data_format") == "pcm16":
             await streaming_stt_service.stream_audio_chunk(session_id, audio_data)
         
         # Send progress update every 10 chunks
@@ -535,6 +548,15 @@ async def start_streaming_transcription(websocket: WebSocket, message_data: dict
                 "timestamp": data["timestamp"]
             })
         
+        async def on_turn_detected(data):
+            """Handle turn detection events"""
+            await websocket_manager.send_message(websocket, {
+                "type": "turn_detected",
+                "session_id": data["session_id"],
+                "text": data.get("text", ""),
+                "timestamp": data["timestamp"]
+            })
+        
         async def on_transcription_error(data):
             """Handle transcription errors"""
             await websocket_manager.send_message(websocket, {
@@ -549,7 +571,8 @@ async def start_streaming_transcription(websocket: WebSocket, message_data: dict
             session_id=session_id,
             on_partial_transcript=on_partial_transcript,
             on_final_transcript=on_final_transcript,
-            on_error=on_transcription_error
+            on_error=on_transcription_error,
+            on_turn_detected=on_turn_detected
         )
         
         if success:

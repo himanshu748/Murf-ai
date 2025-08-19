@@ -6,8 +6,8 @@ A sophisticated AI-powered conversational agent with real-time audio streaming a
 
 ### 🎙️ Voice Interaction
 - Real-time speech-to-text and text-to-speech
-- **Real-time audio streaming to server
-- **Dual recording modes (Traditional vs Streaming)
+- Real-time audio streaming to server
+- Dual recording modes (Traditional vs Streaming)
 - **NEW**: Real-time transcription with AssemblyAI SDK
 - **NEW**: Live partial and final transcript display
 - Multiple voice options with preview
@@ -26,10 +26,11 @@ A sophisticated AI-powered conversational agent with real-time audio streaming a
 
 ### 🛠️ Technical Highlights
 - FastAPI backend with WebSocket support
-- **Binary audio streaming via WebSocket
-- **Real-time file persistence and session management
+- Binary audio streaming via WebSocket
+- Real-time file persistence and session management
 - **NEW**: AssemblyAI Python SDK integration for streaming STT
 - **NEW**: Real-time transcription with 16kHz mono PCM audio format
+- **NEW**: Turn detection support (end-of-speech) via AssemblyAI
 - Modular service architecture
 - Comprehensive error handling
 - Session persistence

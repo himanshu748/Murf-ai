@@ -46,12 +46,18 @@ class WebSocketManager:
             self.active_connections.remove(websocket)
         
         # Remove from session connections
-        for session_id, connections in self.session_connections.items():
+        session_to_cleanup = None
+        for session_id, connections in list(self.session_connections.items()):
             if websocket in connections:
                 connections.remove(websocket)
-                if not connections:  # Remove empty session
-                    del self.session_connections[session_id]
+                if not connections:  # Mark empty session for deletion
+                    session_to_cleanup = session_id
                 break
+        if session_to_cleanup is not None:
+            try:
+                del self.session_connections[session_to_cleanup]
+            except KeyError:
+                pass
         
         # Remove metadata
         if websocket in self.connection_metadata:

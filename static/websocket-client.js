@@ -82,7 +82,8 @@ class WebSocketClient {
         
         this.ws.onerror = (error) => {
             this.log('error', `WebSocket error occurred`);
-            this.handleConnectionError();
+            this.updateConnectionStatus('disconnected');
+            this.showErrorModal('WebSocket connection error. Retrying...');
             this.emit('error', error);
         };
     }
@@ -119,6 +120,15 @@ class WebSocketClient {
                 break;
             case 'error':
                 this.handleError(data);
+                break;
+            case 'partial_transcript':
+                // surface to app if not already handled
+                break;
+            case 'final_transcript':
+                // surface to app if not already handled
+                break;
+            case 'turn_detected':
+                this.log('success', `Turn detected`);
                 break;
             default:
                 this.log('warning', `Unknown message type: ${messageType}`);
@@ -352,7 +362,7 @@ class WebSocketClient {
     }
     
     handleConnectionError() {
-        this.updateConnectionStatus('error');
+        this.updateConnectionStatus('disconnected');
         this.showErrorModal('Failed to connect to the voice agent server. Please check your connection and try again.');
     }
     

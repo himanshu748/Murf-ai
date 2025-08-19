@@ -46,6 +46,14 @@ class VoiceAgent {
         this.maxRecordingTime = 60000; // 60 seconds
         this.silenceTimer = null;
         this.silenceThreshold = 3000; // 3 seconds of silence
+
+        // PCM streaming (for realtime STT)
+        this.audioContext = null;
+        this.scriptNode = null;
+        this.pcmResampleState = {
+            inputSampleRate: 0,
+            leftover: new Float32Array(0)
+        };
         
         this.init();
     }
@@ -165,6 +173,14 @@ class VoiceAgent {
         this.wsClient.on('final_transcript', (data) => {
             this.displayFinalTranscript(data);
         });
+
+        // Turn detection event (from AssemblyAI or synthetic on final)
+        this.wsClient.on('turn_detected', (data) => {
+            // Auto-stop recording on detected turn if currently recording in streaming mode
+            if (this.isRecording && this.streamingMode) {
+                this.stopRecording();
+            }
+        });
         
         this.wsClient.on('transcription_error', (data) => {
             console.error('Transcription error:', data.error);
@@ -279,43 +295,45 @@ class VoiceAgent {
                 }
             });
             
-            // Setup media recorder
-            this.mediaRecorder = new MediaRecorder(this.audioStream, {
-                mimeType: this.getSupportedMimeType()
-            });
-            
             this.audioChunks = [];
             this.recordingStartTime = Date.now();
-            
-            this.mediaRecorder.ondataavailable = (event) => {
-                if (event.data.size > 0) {
-                    if (this.streamingMode) {
-                        // Stream audio chunks in real-time
-                        this.streamAudioChunk(event.data);
-                    } else {
-                        // Accumulate chunks for traditional processing
-                        this.audioChunks.push(event.data);
-                    }
-                }
-            };
-            
-            this.mediaRecorder.onstop = () => {
-                if (this.streamingMode) {
-                    this.stopAudioStreaming();
-                } else {
-                    this.processRecording();
-                }
-            };
-            
-            // Start recording with appropriate interval
-            if (this.streamingMode) {
-                // Start streaming session first
-                this.startAudioStreaming();
-                // Shorter intervals for streaming (50ms)
-                this.mediaRecorder.start(50);
+
+            if (this.streamingMode && this.transcriptionEnabled) {
+                // PCM16 streaming via WebAudio ScriptProcessor
+                await this.startPCMStreaming();
             } else {
-                // Longer intervals for traditional recording (100ms)
-                this.mediaRecorder.start(100);
+                // Setup media recorder for non-PCM streaming or traditional mode
+                this.mediaRecorder = new MediaRecorder(this.audioStream, {
+                    mimeType: this.getSupportedMimeType()
+                });
+
+                this.mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        if (this.streamingMode) {
+                            this.streamAudioChunk(event.data);
+                        } else {
+                            this.audioChunks.push(event.data);
+                        }
+                    }
+                };
+
+                this.mediaRecorder.onstop = () => {
+                    if (this.streamingMode) {
+                        this.stopAudioStreaming();
+                    } else {
+                        this.processRecording();
+                    }
+                };
+
+                if (this.streamingMode) {
+                    // Start streaming session first for container streaming
+                    this.startAudioStreaming({ data_format: 'webm' });
+                    // Shorter intervals for streaming (50ms)
+                    this.mediaRecorder.start(50);
+                } else {
+                    // Longer intervals for traditional recording (100ms)
+                    this.mediaRecorder.start(100);
+                }
             }
             this.isRecording = true;
             
@@ -376,6 +394,12 @@ class VoiceAgent {
             // Stop media recorder
             if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
                 this.mediaRecorder.stop();
+            }
+            // Stop PCM streaming pipeline if active
+            if (this.scriptNode) {
+                this.stopPCMStreaming();
+                // Ensure server-side streaming is stopped
+                this.stopAudioStreaming();
             }
             
             // Stop audio stream
@@ -768,7 +792,7 @@ class VoiceAgent {
     }
     
     // Audio Streaming Methods
-    startAudioStreaming() {
+    startAudioStreaming(opts = {}) {
         if (!this.currentSessionId) {
             console.error('No session ID available for streaming');
             return;
@@ -777,7 +801,8 @@ class VoiceAgent {
         // Send start streaming message
         this.wsClient.sendMessage({
             type: 'start_streaming',
-            session_id: this.currentSessionId
+            session_id: this.currentSessionId,
+            data_format: opts.data_format || (this.transcriptionEnabled ? 'pcm16' : 'webm')
         });
         
         console.log('Started audio streaming for session:', this.currentSessionId);
@@ -789,14 +814,25 @@ class VoiceAgent {
             return;
         }
         
-        // Convert blob to array buffer and send as binary data
-        audioBlob.arrayBuffer().then(arrayBuffer => {
-            if (this.wsClient && this.wsClient.ws && this.wsClient.ws.readyState === WebSocket.OPEN) {
-                this.wsClient.ws.send(arrayBuffer);
-            }
-        }).catch(error => {
-            console.error('Error sending audio chunk:', error);
-        });
+        // If transcription is enabled, convert to PCM16 at 16kHz before sending
+        if (this.transcriptionEnabled) {
+            this.convertToPCM16(audioBlob).then(pcmBuffer => {
+                if (this.wsClient && this.wsClient.ws && this.wsClient.ws.readyState === WebSocket.OPEN) {
+                    this.wsClient.ws.send(pcmBuffer);
+                }
+            }).catch(error => {
+                console.error('Error converting to PCM16:', error);
+            });
+        } else {
+            // Otherwise send raw container data
+            audioBlob.arrayBuffer().then(arrayBuffer => {
+                if (this.wsClient && this.wsClient.ws && this.wsClient.ws.readyState === WebSocket.OPEN) {
+                    this.wsClient.ws.send(arrayBuffer);
+                }
+            }).catch(error => {
+                console.error('Error sending audio chunk:', error);
+            });
+        }
     }
     
     stopAudioStreaming() {
@@ -812,6 +848,112 @@ class VoiceAgent {
         });
         
         console.log('Stopped audio streaming for session:', this.currentSessionId);
+    }
+
+    async startPCMStreaming() {
+        // Begin server-side streaming
+        this.startAudioStreaming({ data_format: 'pcm16' });
+
+        // Build processing graph
+        this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const source = this.audioContext.createMediaStreamSource(this.audioStream);
+
+        // Some browsers require connection to destination; use gain 0
+        const gainNode = this.audioContext.createGain();
+        gainNode.gain.value = 0.0;
+
+        const bufferSize = 4096;
+        this.scriptNode = this.audioContext.createScriptProcessor(bufferSize, 1, 1);
+        this.pcmResampleState.inputSampleRate = this.audioContext.sampleRate;
+        this.pcmResampleState.leftover = new Float32Array(0);
+
+        this.scriptNode.onaudioprocess = (e) => {
+            const inputBuffer = e.inputBuffer;
+            const channelData = inputBuffer.getChannelData(0);
+            const resampled = this.downsampleTo16k(channelData, this.pcmResampleState);
+            if (resampled && resampled.length > 0) {
+                const pcmBuffer = this.floatToPCM16(resampled);
+                if (this.wsClient && this.wsClient.ws && this.wsClient.ws.readyState === WebSocket.OPEN) {
+                    this.wsClient.ws.send(pcmBuffer);
+                }
+            }
+        };
+
+        source.connect(this.scriptNode);
+        this.scriptNode.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+    }
+
+    stopPCMStreaming() {
+        try {
+            if (this.scriptNode) {
+                this.scriptNode.disconnect();
+            }
+            this.scriptNode = null;
+            if (this.audioContext) {
+                this.audioContext.close();
+            }
+            this.audioContext = null;
+            this.pcmResampleState.leftover = new Float32Array(0);
+        } catch (e) {
+            console.warn('Error stopping PCM streaming', e);
+        }
+    }
+
+    downsampleTo16k(float32Audio, state) {
+        const inputSampleRate = state.inputSampleRate || 48000;
+        const targetSampleRate = 16000;
+        const ratio = inputSampleRate / targetSampleRate;
+        if (ratio === 1) {
+            // Already 16k
+            return float32Audio;
+        }
+        // Concatenate leftover from previous call
+        let input;
+        if (state.leftover && state.leftover.length > 0) {
+            input = new Float32Array(state.leftover.length + float32Audio.length);
+            input.set(state.leftover, 0);
+            input.set(float32Audio, state.leftover.length);
+        } else {
+            input = float32Audio;
+        }
+
+        const outputLength = Math.floor(input.length / ratio);
+        const output = new Float32Array(outputLength);
+        let inputIndex = 0;
+        let outputIndex = 0;
+        while (outputIndex < outputLength) {
+            const nextInputIndex = Math.floor((outputIndex + 1) * ratio);
+            // Average samples between inputIndex and nextInputIndex
+            let sum = 0;
+            let count = 0;
+            for (let i = inputIndex; i < nextInputIndex && i < input.length; i++) {
+                sum += input[i];
+                count++;
+            }
+            output[outputIndex] = count > 0 ? (sum / count) : 0;
+            outputIndex++;
+            inputIndex = nextInputIndex;
+        }
+        // Save leftover samples that were not consumed
+        const consumed = Math.floor(outputLength * ratio);
+        const remaining = input.length - consumed;
+        if (remaining > 0) {
+            state.leftover = input.slice(consumed);
+        } else {
+            state.leftover = new Float32Array(0);
+        }
+        return output;
+    }
+
+    floatToPCM16(float32Array) {
+        const buffer = new ArrayBuffer(float32Array.length * 2);
+        const view = new DataView(buffer);
+        for (let i = 0; i < float32Array.length; i++) {
+            let s = Math.max(-1, Math.min(1, float32Array[i]));
+            view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+        }
+        return buffer;
     }
     
     // Toggle between streaming and traditional recording modes
@@ -940,6 +1082,40 @@ class VoiceAgent {
         
         // Scroll to show latest
         transcriptItem.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // Convert container audio blob to PCM16 16k mono ArrayBuffer
+    async convertToPCM16(blob) {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+        const arrayBuffer = await blob.arrayBuffer();
+        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+        // Downmix to mono by averaging channels
+        const numChannels = audioBuffer.numberOfChannels;
+        const length = audioBuffer.length;
+        const mix = new Float32Array(length);
+        for (let c = 0; c < numChannels; c++) {
+            const channelData = audioBuffer.getChannelData(c);
+            for (let i = 0; i < length; i++) {
+                mix[i] += channelData[i];
+            }
+        }
+        if (numChannels > 1) {
+            for (let i = 0; i < length; i++) {
+                mix[i] = mix[i] / numChannels;
+            }
+        }
+
+        // Convert Float32 [-1,1] to PCM16 little-endian
+        const pcmBuffer = new ArrayBuffer(length * 2);
+        const view = new DataView(pcmBuffer);
+        for (let i = 0; i < length; i++) {
+            let s = Math.max(-1, Math.min(1, mix[i]));
+            view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+        }
+
+        await audioContext.close();
+        return pcmBuffer;
     }
     
     cleanup() {

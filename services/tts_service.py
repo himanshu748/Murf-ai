@@ -286,7 +286,7 @@ class TTSService:
         """Get default voice configuration"""
         return {
             "voice_id": self.default_voice_id,
-            "style": self.default_style,
+            "style": self.default_voice_style,
             "gender": "male",
             "language": "en-US"
         }
