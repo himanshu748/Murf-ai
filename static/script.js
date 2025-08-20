@@ -21,6 +21,7 @@
   let sessionId = window.SESSION_ID || (new URLSearchParams(location.search).get('session'));
   let mediaRecorder = null; // legacy recorder to backend (fallback)
   let mediaStream = null;
+  let isRecording = false;
 
   // AssemblyAI Realtime STT state
   let aaiWs = null;
@@ -254,6 +255,7 @@
 
       aaiWs.onopen = async () => {
         aaiConnected = true;
+        isRecording = true;
         recPill.innerHTML = 'Mic: <b class="mono">recording</b> (AAI)';
         appendHistory('stt', 'AssemblyAI connected');
 
@@ -351,6 +353,7 @@
           }
         };
         mediaRecorder.start(250);
+        isRecording = true;
         btnRec.textContent = 'Stop Recording';
         recPill.innerHTML = 'Mic: <b class="mono">recording</b>';
       } catch (err) {
@@ -374,6 +377,7 @@
     stopAaiStreaming();
     mediaRecorder = null;
     mediaStream = null;
+    isRecording = false;
     if (!silent) {
       btnRec.textContent = 'Start Recording';
       recPill.innerHTML = 'Mic: <b class="mono">idle</b>';
@@ -381,10 +385,11 @@
   }
 
   btnRec.addEventListener('click', () => {
-    if (!mediaRecorder) return startRecording();
-    if (mediaRecorder && mediaRecorder.state === 'recording') return stopRecording();
-    // if paused or inactive create fresh
-    startRecording();
+    if (!isRecording) {
+      startRecording();
+    } else {
+      stopRecording();
+    }
   });
 
   // Auto-connect on load
