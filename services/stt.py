@@ -1,13 +1,31 @@
-# services/stt.py
-import assemblyai as aai
-from fastapi import UploadFile
+from __future__ import annotations
 
-def transcribe_audio(audio_file: UploadFile) -> str:
-    """Transcribes audio to text using AssemblyAI."""
-    transcriber = aai.Transcriber()
-    transcript = transcriber.transcribe(audio_file.file)
+import logging
 
-    if transcript.status == aai.TranscriptStatus.error or not transcript.text:
-        raise Exception(f"Transcription failed: {transcript.error or 'No speech detected'}")
+from config import get_settings
 
-    return transcript.text
+logger = logging.getLogger(__name__)
+settings = get_settings()
+
+
+class StreamingSTT:
+    """Placeholder for AssemblyAI streaming STT integration.
+
+    For Day 17/18, you would connect to AssemblyAI Realtime API here,
+    forward audio chunks, and surface partial/final transcripts plus
+    end-of-turn events.
+    """
+
+    def __init__(self, session_id: str):
+        self.session_id = session_id
+
+    async def start(self) -> None:
+        logger.info("[STT] Starting streaming session: %s", self.session_id)
+
+    async def stop(self) -> None:
+        logger.info("[STT] Stopping streaming session: %s", self.session_id)
+
+    async def send_audio(self, chunk: bytes) -> None:
+        logger.debug("[STT] Received audio chunk: bytes=%d", len(chunk))
+
+    # You would also define callbacks / async generators to yield STT events

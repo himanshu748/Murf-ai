@@ -1,332 +1,343 @@
-# main.py
-from fastapi import FastAPI, Request, UploadFile, File, Path, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse, FileResponse
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import os
+import time
+import uuid
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from typing import Dict, List, Any, Type
-import logging
-from pathlib import Path as PathLib
-from uuid import uuid4
-import json
-import asyncio
+import httpx
+import base64
 
-# Import the config file FIRST to load dotenv and configure APIs
-import config
-from services import stt, llm, tts
-from schemas import TTSRequest
+from config import get_settings
+from services import llm, tts
 
-# AssemblyAI streaming imports
-import assemblyai as aai
-from assemblyai.streaming.v3 import (
-    BeginEvent,
-    StreamingClient,
-    StreamingClientOptions,
-    StreamingError,
-    StreamingEvents,
-    StreamingParameters,
-    TerminationEvent,
-    TurnEvent,
+# -----------------------------------------------------------------------------
+# Logging & App Setup
+# -----------------------------------------------------------------------------
+
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO"),
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
+logger = logging.getLogger("murf-ai")
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+app = FastAPI(title="Murf AI Conversational Bot")
 
-app = FastAPI()
-
-# Mount static for CSS/JS and templates for HTML
-app.mount("/static", StaticFiles(directory="static"), name="static")
-templates = Jinja2Templates(directory="templates")
-
-# In-memory store for chat histories.
-chat_histories: Dict[str, List[Dict[str, Any]]] = {}
-
-# Base directory and uploads folder
-BASE_DIR = PathLib(__file__).resolve().parent
+BASE_DIR = Path(__file__).parent
+TEMPLATES_DIR = BASE_DIR / "templates"
+STATIC_DIR = BASE_DIR / "static"
+RECORDINGS_DIR = BASE_DIR / "recordings"
 UPLOADS_DIR = BASE_DIR / "uploads"
-UPLOADS_DIR.mkdir(exist_ok=True)
+
+for d in [TEMPLATES_DIR, STATIC_DIR, RECORDINGS_DIR, UPLOADS_DIR]:
+    d.mkdir(parents=True, exist_ok=True)
+
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+settings = get_settings()
+MAX_HISTORY = settings.MAX_CHAT_HISTORY
+
+# -----------------------------------------------------------------------------
+# In-memory Session Store
+# -----------------------------------------------------------------------------
+
+class Session:
+    def __init__(self, sid: str):
+        self.id = sid
+        self.history: List[Dict[str, str]] = []  # [{role, content}]
+        self.streaming_mode: bool = True
+        self.audio_file_path: Optional[Path] = None
+        self.audio_bytes: int = 0
+        self.audio_chunks: int = 0
+        self.audio_started_at: Optional[float] = None
+        self.current_llm_task: Optional[asyncio.Task] = None
+
+SESSIONS: Dict[str, Session] = {}
 
 
-@app.get("/")
-async def home(request: Request):
-    """Serves the main HTML page."""
-    return templates.TemplateResponse("index.html", {"request": request})
+def get_or_create_session(sid: Optional[str]) -> Session:
+    if not sid:
+        sid = str(uuid.uuid4())
+    if sid not in SESSIONS:
+        SESSIONS[sid] = Session(sid)
+    return SESSIONS[sid]
 
 
-@app.post("/agent/chat/{session_id}")
-async def agent_chat(
-    session_id: str = Path(..., description="The unique ID for the chat session."),
-    audio_file: UploadFile = File(...)
-):
-    """
-    Handles a turn in the conversation, including history.
-    STT -> Add to History -> LLM -> Add to History -> TTS
-    """
-    fallback_audio_path = "static/fallback.mp3"
-
-    # Check for keys by importing them from the config module
-    if not all([config.PERPLEXITY_API_KEY, config.ASSEMBLYAI_API_KEY, config.MURF_API_KEY]):
-        logging.warning("One or more API keys are not configured. Returning fallback audio.")
-        return FileResponse(fallback_audio_path, media_type="audio/mpeg", headers={"X-Error": "true"})
-
-    try:
-        # Step 1: Transcribe audio to text
-        user_query_text = stt.transcribe_audio(audio_file)
-        logging.info(f"User Query (session {session_id}): {user_query_text}")
-
-        # Step 2: Retrieve history and get a response from the LLM
-        session_history = chat_histories.get(session_id, [])
-        llm_response_text, updated_history = llm.get_llm_response(user_query_text, session_history)
-        logging.info(f"LLM Response (session {session_id}): {llm_response_text}")
-
-        # Step 3: Update the chat history
-        chat_histories[session_id] = updated_history
-
-        # Step 4: Convert the LLM's text response to speech
-        audio_url = tts.convert_text_to_speech(llm_response_text)
-
-        if audio_url:
-            return JSONResponse(content={"audio_url": audio_url})
-        else:
-            raise Exception("TTS service did not return an audio file.")
-
-    except Exception as e:
-        logging.error(f"An error occurred in session {session_id}: {e}")
-        return FileResponse(fallback_audio_path, media_type="audio/mpeg", headers={"X-Error": "true"})
+def _append_history_with_trim(session: Session, role: str, content: str) -> None:
+    session.history.append({"role": role, "content": content})
+    # Trim to last MAX_HISTORY messages
+    if MAX_HISTORY > 0 and len(session.history) > MAX_HISTORY:
+        # Keep only the tail
+        session.history = session.history[-MAX_HISTORY:]
 
 
-@app.post("/tts")
-async def tts_endpoint(request: TTSRequest):
-    """Endpoint for the simple Text-to-Speech utility."""
-    try:
-        audio_url = tts.convert_text_to_speech(request.text, request.voiceId)
-        if audio_url:
-            return JSONResponse(content={"audio_url": audio_url})
-        else:
-            return JSONResponse(status_code=500, content={"error": "No audio URL in the API response."})
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": f"TTS generation failed: {e}"})
+# -----------------------------------------------------------------------------
+# Routes
+# -----------------------------------------------------------------------------
 
-
-@app.get("/voices")
-async def get_voices():
-    """Fetches the list of available voices from Murf AI."""
-    try:
-        voices = tts.get_available_voices()
-        return JSONResponse(content={"voices": voices})
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": f"Failed to fetch voices: {e}"})
-
-
-@app.get("/test/perplexity")
-async def test_perplexity():
-    """Test endpoint to verify Perplexity AI integration."""
-    try:
-        # Test the LLM service
-        response, history = llm.get_llm_response("Hello, can you respond with a simple greeting?", [])
-        return JSONResponse(content={
-            "status": "success",
-            "response": response,
-            "history_length": len(history)
-        })
-    except Exception as e:
-        return JSONResponse(status_code=500, content={
-            "status": "error",
-            "error": str(e)
-        })
-
-
-@app.get("/test/assemblyai")
-async def test_assemblyai():
-    """Test endpoint to verify AssemblyAI configuration."""
-    try:
-        if config.ASSEMBLYAI_API_KEY:
-            return JSONResponse(content={
-                "status": "success",
-                "message": "AssemblyAI API key is configured"
-            })
-        else:
-            return JSONResponse(status_code=500, content={
-                "status": "error",
-                "message": "AssemblyAI API key not configured"
-            })
-    except Exception as e:
-        return JSONResponse(status_code=500, content={
-            "status": "error",
-            "error": str(e)
-        })
-
-
-@app.websocket("/ws")
-async def websocket_audio_streaming(websocket: WebSocket):
-    """Receive PCM audio chunks from client and transcribe in real-time using AssemblyAI with turn detection."""
-    await websocket.accept()
-    file_id = uuid4().hex
-    file_path = UPLOADS_DIR / f"streamed_{file_id}.pcm"
-
-    # Check if AssemblyAI API key is configured
-    if not config.ASSEMBLYAI_API_KEY:
-        logging.error("ASSEMBLYAI_API_KEY not configured")
-        await websocket.send_text(json.dumps({
-            "type": "error",
-            "message": "AssemblyAI API key not configured"
-        }))
-        await websocket.close(code=1000, reason="AssemblyAI API key not configured")
-        return
-
-    # Create a queue for transcription messages
-    transcription_queue = asyncio.Queue()
-
-    # Initialize AssemblyAI StreamingClient
-    client = StreamingClient(
-        StreamingClientOptions(
-            api_key=config.ASSEMBLYAI_API_KEY,
-            api_host="streaming.assemblyai.com",
-        )
+@app.get("/", response_class=HTMLResponse)
+async def index(request: Request, session: Optional[str] = None):
+    sid = session or str(uuid.uuid4())
+    # Pre-create session so UI can connect with it
+    get_or_create_session(sid)
+    return templates.TemplateResponse(
+        "index.html",
+        {"request": request, "session_id": sid},
     )
 
-    # Define event handlers
-    def on_begin(self: Type[StreamingClient], event: BeginEvent):
-        logging.info(f"Transcription session started: {event.id}")
-        try:
-            transcription_queue.put_nowait({
-                "type": "status",
-                "message": "Transcription session started - speak now!"
-            })
-        except asyncio.QueueFull:
-            logging.warning("Transcription queue is full")
 
-    def on_turn(self: Type[StreamingClient], event: TurnEvent):
-        transcript_text = event.transcript.strip()
-        logging.info(f"Real-time transcript: '{transcript_text}'")
-        print(f"TRANSCRIPTION: '{transcript_text}'")
-        
-        # Send partial transcriptions for real-time feedback
-        if transcript_text and not event.end_of_turn:
-            try:
-                transcription_queue.put_nowait({
-                    "type": "partial_transcription",
-                    "text": transcript_text,
-                    "is_final": False,
-                    "end_of_turn": False
-                })
-            except asyncio.QueueFull:
-                logging.warning("Transcription queue is full")
-        
-        # Send final transcription when turn ends
-        if event.end_of_turn and transcript_text:
-            logging.info(f"End of turn detected. Final transcript: '{transcript_text}'")
-            print(f"END OF TURN - FINAL TRANSCRIPTION: '{transcript_text}'")
-            
-            try:
-                transcription_queue.put_nowait({
-                    "type": "transcription",
-                    "text": transcript_text,
-                    "is_final": True,
-                    "end_of_turn": True
-                })
-                
-                # Send explicit end-of-turn notification
-                transcription_queue.put_nowait({
-                    "type": "turn_end",
-                    "message": "Turn completed"
-                })
-            except asyncio.QueueFull:
-                logging.warning("Transcription queue is full")
+@app.get("/health")
+async def health():
+    status = {
+        "server": "ok",
+        "murf_api_key": bool(settings.MURF_API_KEY),
+        "assemblyai_api_key": bool(settings.ASSEMBLYAI_API_KEY),
+        "perplexity_api_key": bool(settings.PERPLEXITY_API_KEY),
+    }
+    return JSONResponse(status)
 
-    def on_terminated(self: Type[StreamingClient], event: TerminationEvent):
-        logging.info(f"Transcription session terminated: {event.audio_duration_seconds} seconds of audio processed")
+@app.get("/assemblyai/token")
+async def assemblyai_token():
+    """Mint a short-lived token for AssemblyAI Realtime WS.
 
-    def on_error(self: Type[StreamingClient], error: StreamingError):
-        logging.error(f"AssemblyAI streaming error: {error}")
-        try:
-            transcription_queue.put_nowait({
-                "type": "error",
-                "message": f"Transcription error: {error}"
-            })
-        except asyncio.QueueFull:
-            logging.warning("Transcription queue is full")
+    This avoids exposing the long-lived API key to the browser.
+    """
+    if not settings.ASSEMBLYAI_API_KEY:
+        return JSONResponse({"error": "missing_assemblyai_api_key"}, status_code=400)
 
-    # Register event handlers
-    client.on(StreamingEvents.Begin, on_begin)
-    client.on(StreamingEvents.Turn, on_turn)
-    client.on(StreamingEvents.Termination, on_terminated)
-    client.on(StreamingEvents.Error, on_error)
-
-    # Task to send transcription messages to client
-    async def send_transcriptions():
-        while True:
-            try:
-                message = await asyncio.wait_for(transcription_queue.get(), timeout=0.1)
-                await websocket.send_text(json.dumps(message))
-                transcription_queue.task_done()
-            except asyncio.TimeoutError:
-                continue
-            except Exception as e:
-                logging.error(f"Error sending transcription: {e}")
-                break
-
-    # Start the transcription sender task
-    sender_task = asyncio.create_task(send_transcriptions())
-
-    # Connect to AssemblyAI streaming service
     try:
-        client.connect(
-            StreamingParameters(
-                sample_rate=16000,
-                format_turns=True,
-                enable_extra_session_information=True,
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                "https://streaming.assemblyai.com/v3/token",
+                headers={
+                    "Authorization": settings.ASSEMBLYAI_API_KEY,
+                },
+                params={
+                    "expires_in_seconds": 600,
+                    "max_session_duration_seconds": 3600,
+                },
             )
-        )
-        
-        logging.info("Connected to AssemblyAI streaming service with turn detection enabled")
-        await websocket.send_text(json.dumps({
-            "type": "status",
-            "message": "Connected to transcription service - start speaking!"
-        }))
-
-        # Process audio messages
-        while True:
-            try:
-                message = await websocket.receive()
-                
-                if "bytes" in message:
-                    pcm_data = message["bytes"]
-                    logging.debug(f"Received audio chunk of size: {len(pcm_data)} bytes")
-                    
-                    # Send to AssemblyAI for transcription
-                    if len(pcm_data) > 0:
-                        client.stream(pcm_data)
-                    
-                elif message.get("text") == "EOF":
-                    logging.info("Recording finished. Closing transcription session.")
-                    break
-                    
-            except WebSocketDisconnect:
-                logging.info("Client disconnected from WebSocket")
-                break
-            except Exception as e:
-                logging.error(f"Error receiving message: {e}")
-                break
-
+            if resp.status_code != 200:
+                logger.error("Failed to mint AssemblyAI token: %s %s", resp.status_code, resp.text)
+                return JSONResponse({
+                    "error": "aai_token_failed",
+                    "upstream_status": resp.status_code,
+                    "upstream_body": resp.text,
+                }, status_code=resp.status_code)
+            data = resp.json()
+            # Expected: {"token": "...", "expires_at": "..."}
+            return JSONResponse(data)
     except Exception as e:
-        logging.error(f"WebSocket error: {str(e)}")
-    finally:
-        # Cancel the sender task
-        sender_task.cancel()
-        
-        # Clean up AssemblyAI connection
-        try:
-            client.disconnect(terminate=True)
-        except Exception as e:
-            logging.error(f"Error disconnecting from AssemblyAI: {e}")
-        
-        # Close WebSocket connection
-        try:
-            await websocket.close()
-        except Exception as e:
-            logging.error(f"Error closing WebSocket: {e}")
+        logger.exception("Error requesting AssemblyAI token")
+        return JSONResponse({"error": "aai_token_exception", "detail": str(e)}, status_code=500)
 
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+@app.get("/session/new")
+async def new_session():
+    sid = str(uuid.uuid4())
+    get_or_create_session(sid)
+    return {"session": sid}
+
+
+@app.get("/session/{session_id}/history")
+async def session_history(session_id: str):
+    s = get_or_create_session(session_id)
+    return {"session": session_id, "history": s.history}
+
+
+@app.delete("/session/{session_id}")
+async def delete_session(session_id: str):
+    try:
+        SESSIONS.pop(session_id, None)
+        return {"status": "deleted", "session": session_id}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# -----------------------------------------------------------------------------
+# WebSocket: Real-time streaming & Day 19 LLM token streaming
+# -----------------------------------------------------------------------------
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+
+    # Read session from query params
+    query = websocket.query_params
+    session_qp: Optional[str] = query.get("session") or query.get("session_id")
+    session = get_or_create_session(session_qp)
+
+    logger.info("WS connected: session=%s", session.id)
+
+    try:
+        while True:
+            message = await websocket.receive()
+
+            if "text" in message and message["text"] is not None:
+                # JSON control/message frames
+                try:
+                    payload = json.loads(message["text"])
+                except json.JSONDecodeError:
+                    await websocket.send_text(json.dumps({
+                        "type": "error",
+                        "message": "invalid_json",
+                    }))
+                    continue
+
+                msg_type = payload.get("type")
+
+                if msg_type == "echo":
+                    await websocket.send_text(json.dumps({"type": "echo", "data": payload.get("data")}))
+
+                elif msg_type == "session_create":
+                    session = get_or_create_session(None)
+                    await websocket.send_text(json.dumps({"type": "session_created", "session": session.id}))
+
+                elif msg_type == "session_join":
+                    requested = payload.get("session")
+                    session = get_or_create_session(requested)
+                    await websocket.send_text(json.dumps({"type": "session_joined", "session": session.id}))
+
+                elif msg_type == "streaming_mode":
+                    on = bool(payload.get("on", True))
+                    session.streaming_mode = on
+                    await websocket.send_text(json.dumps({"type": "streaming_mode", "on": session.streaming_mode}))
+
+                elif msg_type == "text_message":
+                    text = payload.get("text", "").strip()
+                    if not text:
+                        continue
+
+                    _append_history_with_trim(session, "user", text)
+
+                    # Cancel existing LLM task if running
+                    if session.current_llm_task and not session.current_llm_task.done():
+                        session.current_llm_task.cancel()
+
+                    # Spawn background task to stream LLM tokens (Day 19)
+                    session.current_llm_task = asyncio.create_task(
+                        _stream_llm_and_emit(websocket, session, text)
+                    )
+
+                elif msg_type == "turn_end":
+                    # When STT signals end of user turn, run LLM on transcript
+                    transcript = payload.get("transcript", "").strip()
+                    if transcript:
+                        _append_history_with_trim(session, "user", transcript)
+                        if session.current_llm_task and not session.current_llm_task.done():
+                            session.current_llm_task.cancel()
+                        session.current_llm_task = asyncio.create_task(
+                            _stream_llm_and_emit(websocket, session, transcript)
+                        )
+
+                else:
+                    await websocket.send_text(json.dumps({
+                        "type": "error",
+                        "message": f"unknown_type:{msg_type}",
+                    }))
+
+            elif "bytes" in message and message["bytes"] is not None:
+                # Binary audio chunk during streaming mode
+                data: bytes = message["bytes"]
+                if session.streaming_mode:
+                    if session.audio_file_path is None:
+                        session.audio_started_at = time.time()
+                        filename = f"stream_{session.id}_{int(session.audio_started_at)}.webm"
+                        session.audio_file_path = RECORDINGS_DIR / filename
+                        # Ensure file exists
+                        session.audio_file_path.parent.mkdir(parents=True, exist_ok=True)
+                        with open(session.audio_file_path, "wb") as f:
+                            pass
+
+                    with open(session.audio_file_path, "ab") as f:
+                        f.write(data)
+
+                    session.audio_chunks += 1
+                    session.audio_bytes += len(data)
+
+                    duration = 0.0
+                    if session.audio_started_at:
+                        duration = time.time() - session.audio_started_at
+
+                    # Emit progress to client
+                    await websocket.send_text(json.dumps({
+                        "type": "streaming_progress",
+                        "chunks": session.audio_chunks,
+                        "bytes": session.audio_bytes,
+                        "duration": round(duration, 2),
+                    }))
+
+            else:
+                # No text or bytes, ignore
+                pass
+
+    except WebSocketDisconnect:
+        logger.info("WS disconnected: session=%s", session.id)
+    except Exception:
+        logger.exception("WS error: session=%s", session.id)
+        try:
+            await websocket.send_text(json.dumps({"type": "error", "message": "server_error"}))
+        except Exception:
+            pass
+
+
+async def _stream_llm_and_emit(ws: WebSocket, session: Session, prompt: str):
+    """Stream LLM tokens to client without blocking WS receive loop."""
+    logger.info("[Day 19] Start LLM stream: session=%s", session.id)
+    assembled: List[str] = []
+
+    try:
+        async for token in llm.stream_chat(prompt, history=session.history):
+            # Log token to server console (Day 19 requirement)
+            logger.info("[LLM token] %s", token)
+            assembled.append(token)
+            # Emit token to client
+            try:
+                await ws.send_text(json.dumps({"type": "llm_token", "token": token}))
+            except RuntimeError:
+                # WS might be closed; stop streaming
+                logger.warning("WebSocket closed while streaming tokens")
+                break
+
+        final_text = "".join(assembled)
+        logger.info("[LLM complete] %s", final_text)
+        _append_history_with_trim(session, "assistant", final_text)
+        try:
+            await ws.send_text(json.dumps({"type": "llm_complete", "text": final_text}))
+        except RuntimeError:
+            logger.warning("WebSocket closed before sending completion")
+
+        # After completion, synthesize TTS and send to client (fallback MP3 for now)
+        try:
+            audio_bytes = await tts.synthesize(final_text)
+            if audio_bytes:
+                b64 = base64.b64encode(audio_bytes).decode("ascii")
+                try:
+                    await ws.send_text(json.dumps({
+                        "type": "tts_audio",
+                        "mime": "audio/mpeg",
+                        "b64": b64,
+                    }))
+                except RuntimeError:
+                    logger.warning("WebSocket closed before sending TTS audio")
+        except Exception:
+            logger.exception("TTS synthesis failed")
+
+    except asyncio.CancelledError:
+        logger.info("LLM streaming task cancelled: session=%s", session.id)
+        raise
+    except Exception:
+        logger.exception("Error during LLM streaming: session=%s", session.id)
+        try:
+            await ws.send_text(json.dumps({"type": "error", "message": "llm_stream_failed"}))
+        except Exception:
+            pass

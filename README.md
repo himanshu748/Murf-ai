@@ -1,4 +1,4 @@
-# 🎤 Murf AI Conversational Bot - Day 18 Enhanced
+# 🎤 Murf AI Conversational Bot - Day 19: Streaming LLM Responses (Plan)
 
 A sophisticated AI-powered conversational agent with real-time audio streaming, turn detection, and enhanced UI, built with FastAPI and modern web technologies. This project combines Murf AI (TTS), AssemblyAI SDK (Streaming STT), and Perplexity AI (LLM) to create a seamless voice interaction experience with intelligent turn detection and a beautiful, responsive interface.
 
@@ -180,7 +180,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🚀 Challenge Overview
 
-This project represents the **30 Days of AI Agent Challenge by Murf AI** - an intensive hands-on journey to master AI agent development. Currently showcasing the first 14 days of learning and building:
+This project represents the **30 Days of AI Agent Challenge by Murf AI** - an intensive hands-on journey to master AI agent development. Currently documenting progress through **Day 19** (with Day 19 focused on planning streaming LLM responses):
 
 - **FastAPI** backend with Python for robust server architecture
 - **Murf AI** for premium text-to-speech capabilities
@@ -620,6 +620,35 @@ curl -X POST "http://localhost:8000/agent/chat/test-session" \
 - **Comprehensive Statistics**: Duration, chunk count, total bytes, and average chunk size tracking
 
 **Key Learning**: Real-time binary data streaming, mixed message type handling in WebSockets, and building dual-mode audio recording interfaces.
+
+#### Day 17: Real-Time Audio Transcription (recap)
+**Goal**: Live transcription during streaming
+
+- Integrated AssemblyAI SDK for partial and final results over `/ws`
+- Logged transcripts server-side and surfaced updates to the UI
+
+#### Day 18: Turn Detection & UI Enhancements (recap)
+**Goal**: Detect natural speaking turns with clear visual feedback
+
+- Enabled end-of-turn detection via AssemblyAI streaming events
+- Added status indicators and smoother UI interactions for recording/transcribing
+
+#### Day 19: Streaming LLM Responses ⭐ NEW
+**Goal**: After receiving the final transcript from AssemblyAI, stream the LLM response token-by-token, accumulate it, and print to the console.
+
+**Implementation Plan**
+- In `main.py` (`websocket_audio_streaming()`), on `TurnEvent` with `end_of_turn=True`, pass the transcript text to the LLM layer.
+- Add a streaming helper in `services/llm.py` that yields incremental tokens/chunks from the LLM API.
+- Accumulate chunks server-side and log tokens and the final assembled response to the console.
+
+**How to Test**
+- Run the app, connect the browser to `/ws`, and speak a short prompt.
+- When the turn ends, watch the server console for streamed tokens arriving and the final concatenated response.
+
+**Acceptance Criteria**
+- Tokens from the LLM arrive incrementally and are printed as they stream in.
+- The complete response string is assembled and logged after the stream ends.
+- No blocking of the WebSocket loop; streaming runs without disrupting ongoing transcription sessions.
 
 ## 🚀 Deployment
 

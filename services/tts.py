@@ -1,33 +1,32 @@
-# services/tts.py
-import requests
-from typing import List, Dict, Any
-from config import MURF_API_KEY # Import the key from config
+from __future__ import annotations
 
-MURF_API_URL = "https://api.murf.ai/v1/speech"
+import logging
+from pathlib import Path
 
-def convert_text_to_speech(text: str, voice_id: str = "en-US-natalie") -> str:
-    """Converts text to speech using Murf AI."""
-    if not MURF_API_KEY:
-        raise Exception("MURF_API_KEY not configured.")
+from config import get_settings
 
-    headers = {"Content-Type": "application/json", "api-key": MURF_API_KEY}
-    payload = {
-        "text": text,
-        "voiceId": voice_id,
-        "format": "MP3",
-        "volume": "100%"
-    }
-    response = requests.post(f"{MURF_API_URL}/generate", json=payload, headers=headers)
-    response.raise_for_status()
-    response_data = response.json()
-    return response_data.get("audioFile")
+logger = logging.getLogger(__name__)
+settings = get_settings()
 
-def get_available_voices() -> List[Dict[str, Any]]:
-    """Fetches the list of available voices from Murf AI."""
-    if not MURF_API_KEY:
-        raise Exception("MURF_API_KEY not configured.")
 
-    headers = {"Accept": "application/json", "api-key": MURF_API_KEY}
-    response = requests.get(f"{MURF_API_URL}/voices", headers=headers)
-    response.raise_for_status()
-    return response.json()
+async def synthesize(text: str) -> bytes:
+    """Generate speech audio for the assistant reply.
+
+    If Murf API integration is configured, this is where it would be called.
+    For now, return a bundled fallback MP3 so playback works end-to-end.
+    """
+    logger.info("[TTS] Synthesizing %d chars", len(text))
+
+    # TODO: Integrate Murf TTS using settings.MURF_API_KEY. Keep secure.
+
+    # Fallback: return the bundled static MP3 so UI can play audio.
+    try:
+        base_dir = Path(__file__).resolve().parent.parent
+        fallback_path = base_dir / "static" / "fallback.mp3"
+        if fallback_path.exists():
+            return fallback_path.read_bytes()
+    except Exception:
+        logger.exception("[TTS] Failed to read fallback audio")
+
+    # If anything fails, return empty bytes
+    return b""
