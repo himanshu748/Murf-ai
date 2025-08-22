@@ -1,6 +1,26 @@
-# 🎤 Murf AI Conversational Bot - Day 19: Streaming LLM Responses (Plan)
+# 🎤 Murf AI Conversational Bot - Day 21: Stream Murf Audio to Client + LLM Streaming + AudioWorklet STT
 
 A sophisticated AI-powered conversational agent with real-time audio streaming, turn detection, and enhanced UI, built with FastAPI and modern web technologies. This project combines Murf AI (TTS), AssemblyAI SDK (Streaming STT), and Perplexity AI (LLM) to create a seamless voice interaction experience with intelligent turn detection and a beautiful, responsive interface.
+
+## 🆕 What's New in Day 21
+- **Stream Murf base64 audio to the browser**: The backend now forwards Murf WS base64 audio chunks to the client in real time over `/ws`.
+- **Client accumulation + acknowledgements**: The frontend accumulates chunks in-memory and logs acknowledgements for each received chunk.
+- **No playback for chunks (yet)**: Chunks are not played in the `<audio>` element for this step. Existing `tts_audio` single-shot playback remains unchanged.
+- **Message format**: `{"type": "audio_chunk", "b64": "...", "final": true|false, "context_id": "ctx_<session>"}`
+
+### How to Test Day 21
+1. Start the server and open the app (see Getting Started below).
+2. Send a prompt (type and press Send or use STT flow).
+3. Open the browser DevTools Console.
+4. Observe logs like `"[WS] audio_chunk #<n> len=<len> final=<bool> ctx=<id>"` as chunks arrive.
+5. Confirm an in-memory array is growing on the client: `ttsChunkBuffer.length`.
+
+### Code Pointers
+- Backend forwarding: `main.py` in `_stream_llm_and_emit()` wires `MurfWsClient.start_receiver(on_audio_chunk=...)` and forwards chunks to the browser as `audio_chunk` messages.
+- Murf client: `services/murf_ws.py` invokes the `on_audio_chunk(b64, payload)` callback for each Murf audio message.
+- Frontend accumulation: `static/script.js` handles `type === 'audio_chunk'`, pushes `b64` into `ttsChunkBuffer`, and prints acknowledgements. No UI playback for streamed chunks.
+
+> Note: This change does not disrupt existing token streaming or the final `tts_audio` message.
 
 ## ✨ Key Features
 
@@ -102,11 +122,13 @@ Murf-ai/
 │   ├── __init__.py
 │   ├── stt.py                 # AssemblyAI speech-to-text service
 │   ├── llm.py                 # Perplexity AI integration with 'sonar' model
+│   ├── murf_ws.py             # Murf WebSocket TTS streaming client (logs base64 audio)
 │   └── tts.py                 # Murf AI text-to-speech service
 ├── templates/                  # Enhanced Jinja2 templates
 │   └── index.html             # Beautiful responsive UI with animations
 ├── static/                     # Enhanced frontend assets
 │   ├── script.js              # Enhanced JavaScript with turn detection
+│   ├── aai-worklet.js         # AudioWorklet processor for realtime STT
 │   └── fallback.mp3           # Fallback audio for error scenarios
 ├── .env                       # Environment variables (API keys)
 └── README.md                  # This enhanced documentation
@@ -180,8 +202,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🚀 Challenge Overview
 
-This project represents the **30 Days of AI Agent Challenge by Murf AI** - an intensive hands-on journey to master AI agent development. Currently documenting progress through **Day 19** (with Day 19 focused on planning streaming LLM responses):
-
+This project represents the **30 Days of AI Agent Challenge by Murf AI** - an intensive hands-on journey to master AI agent development. Currently documenting progress through **Day 20** (Murf WS TTS streaming, UI toggles, and AudioWorklet STT):
+  
 - **FastAPI** backend with Python for robust server architecture
 - **Murf AI** for premium text-to-speech capabilities
 - **AssemblyAI** for accurate speech transcription
@@ -302,6 +324,8 @@ ASSEMBLYAI_API_KEY=your_assemblyai_api_key_here
 PERPLEXITY_API_KEY=your_perplexity_api_key_here
 LOG_LEVEL=INFO
 MAX_CHAT_HISTORY=10
+PERPLEXITY_MODEL=sonar
+MURF_VOICE_CONFIG_JSON=
 ```
 
 ## 🔌 API Endpoints

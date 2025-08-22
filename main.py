@@ -18,6 +18,7 @@ import base64
 
 from config import get_settings
 from services import llm, tts
+from services.murf_ws import MurfWsClient
 
 # -----------------------------------------------------------------------------
 # Logging & App Setup
@@ -60,6 +61,9 @@ class Session:
         self.audio_chunks: int = 0
         self.audio_started_at: Optional[float] = None
         self.current_llm_task: Optional[asyncio.Task] = None
+        # Murf WS client and static context for this session
+        self.murf_client: Optional[MurfWsClient] = None
+        self.murf_context_id: str = f"ctx_{sid}"
 
 SESSIONS: Dict[str, Session] = {}
 
@@ -282,10 +286,22 @@ async def websocket_endpoint(websocket: WebSocket):
 
     except WebSocketDisconnect:
         logger.info("WS disconnected: session=%s", session.id)
+        # Cleanup Murf client if active
+        try:
+            if session.murf_client:
+                await session.murf_client.close()
+        except Exception:
+            logger.exception("Error closing Murf client on disconnect")
     except Exception:
         logger.exception("WS error: session=%s", session.id)
         try:
             await websocket.send_text(json.dumps({"type": "error", "message": "server_error"}))
+        except Exception:
+            pass
+        # Attempt Murf cleanup
+        try:
+            if session.murf_client:
+                await session.murf_client.close()
         except Exception:
             pass
 
@@ -294,27 +310,84 @@ async def _stream_llm_and_emit(ws: WebSocket, session: Session, prompt: str):
     """Stream LLM tokens to client without blocking WS receive loop."""
     logger.info("[Day 19] Start LLM stream: session=%s", session.id)
     assembled: List[str] = []
+    send_lock = asyncio.Lock()
 
     try:
+        # Initialize Murf WS once per session if API key is configured
+        use_murf = bool(settings.MURF_API_KEY)
+        if use_murf and session.murf_client is None:
+            try:
+                session.murf_client = MurfWsClient(settings.MURF_API_KEY)
+                await session.murf_client.connect()
+                # Start the receiver loop which logs base64 audio to console
+                # and forward the base64 chunks to the browser client.
+                async def _on_audio_chunk(b64: str, payload: dict) -> None:
+                    try:
+                        async with send_lock:
+                            await ws.send_text(json.dumps({
+                                "type": "audio_chunk",
+                                "b64": b64,
+                                "final": bool(payload.get("final")),
+                                "context_id": payload.get("context_id"),
+                            }))
+                    except Exception:
+                        logger.exception("Failed to forward audio chunk to client")
+                await session.murf_client.start_receiver(on_audio_chunk=_on_audio_chunk)
+                # If voice config JSON is provided, send it once
+                if getattr(settings, "MURF_VOICE_CONFIG_JSON", None):
+                    try:
+                        cfg = json.loads(settings.MURF_VOICE_CONFIG_JSON)
+                        await session.murf_client.send_voice_config(cfg)
+                        logger.info("[MurfWS] voice_config sent")
+                    except Exception:
+                        logger.exception("[MurfWS] Failed to send voice_config from env")
+            except Exception:
+                logger.exception("Failed to initialize Murf WS client; falling back to local TTS only")
+                session.murf_client = None
+
+        # For a new assistant turn, clear previous Murf context (while keeping static context_id)
+        try:
+            if session.murf_client is not None:
+                await session.murf_client.send_text(session.murf_context_id, "", clear=True)
+        except Exception:
+            logger.exception("Failed to clear Murf context before streaming")
+
         async for token in llm.stream_chat(prompt, history=session.history):
             # Log token to server console (Day 19 requirement)
             logger.info("[LLM token] %s", token)
             assembled.append(token)
             # Emit token to client
             try:
-                await ws.send_text(json.dumps({"type": "llm_token", "token": token}))
+                async with send_lock:
+                    await ws.send_text(json.dumps({"type": "llm_token", "token": token}))
             except RuntimeError:
                 # WS might be closed; stop streaming
                 logger.warning("WebSocket closed while streaming tokens")
                 break
+            # Forward token to Murf WS using a static context_id
+            try:
+                if session.murf_client is not None:
+                    await session.murf_client.send_text(session.murf_context_id, token)
+            except Exception:
+                logger.exception("Failed to forward token to Murf WS")
 
         final_text = "".join(assembled)
         logger.info("[LLM complete] %s", final_text)
         _append_history_with_trim(session, "assistant", final_text)
         try:
-            await ws.send_text(json.dumps({"type": "llm_complete", "text": final_text}))
+            async with send_lock:
+                await ws.send_text(json.dumps({"type": "llm_complete", "text": final_text}))
         except RuntimeError:
             logger.warning("WebSocket closed before sending completion")
+
+        # Signal end of Murf context so it can finalize audio
+        try:
+            if session.murf_client is not None:
+                await session.murf_client.send_text(session.murf_context_id, "", end=True)
+                # Optionally wait briefly for Murf to mark final
+                asyncio.create_task(session.murf_client.wait_for_final(session.murf_context_id, timeout=5.0))
+        except Exception:
+            logger.exception("Failed to send end signal to Murf WS")
 
         # After completion, synthesize TTS and send to client (fallback MP3 for now)
         try:
@@ -322,11 +395,12 @@ async def _stream_llm_and_emit(ws: WebSocket, session: Session, prompt: str):
             if audio_bytes:
                 b64 = base64.b64encode(audio_bytes).decode("ascii")
                 try:
-                    await ws.send_text(json.dumps({
-                        "type": "tts_audio",
-                        "mime": "audio/mpeg",
-                        "b64": b64,
-                    }))
+                    async with send_lock:
+                        await ws.send_text(json.dumps({
+                            "type": "tts_audio",
+                            "mime": "audio/mpeg",
+                            "b64": b64,
+                        }))
                 except RuntimeError:
                     logger.warning("WebSocket closed before sending TTS audio")
         except Exception:

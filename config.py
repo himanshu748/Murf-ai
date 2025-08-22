@@ -12,6 +12,8 @@ class Settings:
 
     # Third-party API Keys
     MURF_API_KEY: Optional[str] = os.getenv("MURF_API_KEY")
+    # Optional raw JSON string for Murf voice configuration
+    MURF_VOICE_CONFIG_JSON: Optional[str] = os.getenv("MURF_VOICE_CONFIG_JSON")
     ASSEMBLYAI_API_KEY: Optional[str] = os.getenv("ASSEMBLYAI_API_KEY")
     PERPLEXITY_API_KEY: Optional[str] = os.getenv("PERPLEXITY_API_KEY")
 
