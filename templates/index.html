@@ -3,119 +3,720 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Murf AI Conversational Bot</title>
+    <title>Murf AI Voice Studio</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link rel="shortcut icon" href="/favicon.ico">
     <style>
       :root {
         --bg: #0a0a0a;
         --bg2: #1a1a1a;
-        --gold: #ffffff;
+        --bg3: #0f0f0f;
+        --primary: #6366f1;
+        --primary-hover: #4f46e5;
+        --success: #10b981;
+        --warning: #f59e0b;
+        --danger: #ef4444;
         --text: #ffffff;
-        --text2: #cccccc;
-        --danger: #ff4d4f;
-        --ok: #00c853;
+        --text2: #d1d5db;
+        --text3: #9ca3af;
+        --border: rgba(255, 255, 255, 0.1);
+        --border-hover: rgba(255, 255, 255, 0.2);
+        --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
       }
+      
+      * {
+        box-sizing: border-box;
+      }
+      
       html, body {
-        background: radial-gradient(1000px 600px at 10% 0%, #151515, var(--bg)) fixed;
+        background: radial-gradient(1000px 800px at 50% 0%, #1e1b4b, var(--bg)) fixed;
         color: var(--text);
         margin: 0;
-        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         min-height: 100vh;
+        line-height: 1.6;
       }
+      
       .container {
-        max-width: 1280px;
+        max-width: 1400px;
         margin: 0 auto;
-        padding: 24px 16px 56px;
+        padding: 24px 20px 40px;
       }
+      
       .header {
-        background: linear-gradient(135deg, rgba(255,255,255,0.12), rgba(255,255,255,0));
-        border: 1px solid rgba(255,255,255,0.18);
-        border-radius: 16px;
-        padding: 16px 20px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 24px 32px;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 12px;
-        backdrop-filter: blur(8px);
+        gap: 16px;
+        backdrop-filter: blur(20px);
+        box-shadow: var(--shadow-lg);
+        margin-bottom: 32px;
       }
+      
       .brand {
         display: flex;
         flex-direction: column;
-        gap: 4px;
+        gap: 8px;
       }
-      .brand h1 { font-size: 22px; margin: 0; letter-spacing: 0.3px; }
-      .brand p { font-size: 12px; margin: 0; color: var(--text2); }
+      
+      .brand h1 { 
+        font-size: 28px; 
+        margin: 0; 
+        font-weight: 700;
+        background: linear-gradient(135deg, #ffffff, #a5b4fc);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+      
+      .brand p { 
+        font-size: 14px; 
+        margin: 0; 
+        color: var(--text2);
+        font-weight: 500;
+      }
+      
       .status {
-        display: flex; align-items: center; gap: 10px; font-size: 13px;
+        display: flex; 
+        align-items: center; 
+        gap: 12px; 
+        font-size: 14px;
+        font-weight: 500;
       }
-      .dot { width: 10px; height: 10px; border-radius: 6px; background: #777; box-shadow: 0 0 0 3px rgba(255,255,255,0.1); }
-      .dot.ok { background: var(--ok); }
-      .dot.err { background: var(--danger); }
-      .card { background: rgba(26,26,26,0.7); border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; padding: 16px; }
-      .grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin-top: 16px; }
-      /* Enable two-column layout only when debug is visible */
-      .has-debug .grid { grid-template-columns: 1.2fr 0.8fr; }
-      .section-title { font-size: 13px; color: var(--text2); margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.1em; }
-      .row { display: flex; gap: 10px; flex-wrap: wrap; }
-      button, .toggle {
-        background: linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.02));
-        border: 1px solid rgba(255,255,255,0.22);
-        color: var(--text);
-        padding: 10px 14px;
+
+      .gear-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 36px;
+        height: 36px;
         border-radius: 10px;
-        font-weight: 600;
+        border: 1px solid var(--border);
+        background: linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.04));
+        color: var(--text2);
         cursor: pointer;
-        transition: 200ms ease;
+        transition: all 0.2s ease;
       }
-      button:hover { filter: brightness(1.07); transform: translateY(-1px); }
-      input[type="text"], textarea {
-        width: 100%;
-        background: #0f0f0f;
-        border: 1px solid rgba(255,255,255,0.08);
+
+      .gear-btn:hover {
+        border-color: var(--border-hover);
         color: var(--text);
-        padding: 10px 12px;
-        border-radius: 10px;
-        outline: none;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.25);
       }
-      .pill { font-size: 12px; color: var(--text2); }
-      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
-      .tokens { height: 280px; overflow: auto; background: #0d0d0d; border: 1px dashed rgba(255,255,255,0.25); border-radius: 10px; padding: 10px; }
-      .history { height: 280px; overflow: auto; background: #0d0d0d; border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 10px; }
-      .muted { color: var(--text2); }
-      .hidden { display: none !important; }
-      footer { margin-top: 16px; display: flex; justify-content: center; color: var(--text2); font-size: 12px; }
-      /* Chat bubbles and typing indicator */
-      #history { display: flex; flex-direction: column; }
-      .msg { padding: 10px 12px; border-radius: 12px; margin: 6px 0; max-width: 100%; line-height: 1.4; }
-      .msg.user { background: linear-gradient(135deg, rgba(255,255,255,0.10), rgba(255,255,255,0.02)); border: 1px solid rgba(255,255,255,0.22); align-self: flex-end; }
-      .msg.assistant { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); }
-      .msg.error { background: rgba(255,77,79,0.08); border: 1px solid rgba(255,77,79,0.35); }
-      .msg.stt { background: rgba(0,200,83,0.08); border: 1px solid rgba(0,200,83,0.35); }
-      .msg.tts { background: rgba(66,165,245,0.08); border: 1px solid rgba(66,165,245,0.35); }
-      .typing { font-size: 12px; color: var(--text2); margin-top: 8px; display: flex; align-items: center; gap: 6px; }
-      .typing .dots i { width: 6px; height: 6px; display: inline-block; background: var(--gold); border-radius: 100%; margin: 0 2px; opacity: 0.3; animation: blink 1.2s infinite; }
-      .typing .dots i:nth-child(2) { animation-delay: .2s; }
-      .typing .dots i:nth-child(3) { animation-delay: .4s; }
-      @keyframes blink { 0%, 80%, 100% { opacity: .2 } 40% { opacity: 1 } }
-      /* STT meter */
-      .meter { flex: 1; height: 12px; background: #101010; border: 1px solid rgba(255,255,255,0.06); border-radius: 999px; overflow: hidden; }
-      .meter .bar { height: 100%; width: 0%; background: linear-gradient(90deg, #ffffff, #9e9e9e); transition: width 80ms linear; }
-      .icon-btn { width: 44px; height: 44px; padding: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 18px; }
-      /* Large premium mic button */
+      
+      .dot { 
+        width: 12px; 
+        height: 12px; 
+        border-radius: 50%; 
+        background: var(--text3); 
+        box-shadow: 0 0 0 3px rgba(255,255,255,0.1); 
+        transition: all 0.3s ease; 
+      }
+      
+      .dot.ok { 
+        background: var(--success); 
+        box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.2), 0 0 12px rgba(16, 185, 129, 0.4); 
+        animation: pulse 2s ease-in-out infinite; 
+      }
+      
+      .dot.err { 
+        background: var(--danger); 
+        box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.2), 0 0 12px rgba(239, 68, 68, 0.4); 
+      }
+      
+      @keyframes pulse { 
+        0%, 100% { transform: scale(1); opacity: 1; } 
+        50% { transform: scale(1.1); opacity: 0.8; } 
+      }
+      
+      .main-content {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 24px;
+      }
+      
+      .has-debug .main-content { 
+        grid-template-columns: 1.2fr 0.8fr; 
+      }
+      
+      .card { 
+        background: rgba(26, 26, 26, 0.8); 
+        border: 1px solid var(--border); 
+        border-radius: 20px; 
+        padding: 28px;
+        backdrop-filter: blur(20px);
+        box-shadow: var(--shadow);
+        transition: all 0.3s ease;
+      }
+      
+      .card:hover {
+        border-color: var(--border-hover);
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-lg);
+      }
+      
+      .section-title { 
+        font-size: 16px; 
+        color: var(--text2); 
+        margin: 0 0 20px; 
+        text-transform: uppercase; 
+        letter-spacing: 0.1em;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      
+      .section-title::before {
+        content: '';
+        width: 4px;
+        height: 20px;
+        background: linear-gradient(135deg, var(--primary), var(--primary-hover));
+        border-radius: 2px;
+      }
+      
+      .controls-section {
+        text-align: center;
+        margin-bottom: 32px;
+      }
+      
       .mic-btn {
-        width: 80px;
-        height: 80px;
+        width: 100px;
+        height: 100px;
         border-radius: 50%;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        font-size: 28px;
-        background: radial-gradient(120px 120px at 50% 40%, rgba(255,255,255,0.18), rgba(255,255,255,0.06));
-        border: 1px solid rgba(255,255,255,0.28);
-        box-shadow: 0 8px 28px rgba(255,255,255,0.06), inset 0 0 0 2px rgba(255,255,255,0.06);
+        font-size: 32px;
+        background: radial-gradient(140px 140px at 50% 50%, rgba(99, 102, 241, 0.2), rgba(99, 102, 241, 0.05));
+        border: 2px solid var(--primary);
+        box-shadow: 0 8px 32px rgba(99, 102, 241, 0.3), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+        transition: all 0.3s ease;
+        cursor: pointer;
+        position: relative;
+        overflow: hidden;
       }
+      
+      .mic-btn::before {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 0;
+        height: 0;
+        background: rgba(99, 102, 241, 0.3);
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        transition: all 0.3s ease;
+      }
+      
+      .mic-btn:hover {
+        transform: scale(1.05);
+        box-shadow: 0 12px 40px rgba(99, 102, 241, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+      }
+      
+      .mic-btn:hover::before {
+        width: 100%;
+        height: 100%;
+      }
+      
       .mic-btn.recording {
-        background: radial-gradient(120px 120px at 50% 40%, rgba(255,99,71,0.35), rgba(255,255,255,0.06));
-        box-shadow: 0 10px 36px rgba(255,99,71,0.35), inset 0 0 0 2px rgba(255,99,71,0.35);
+        background: radial-gradient(140px 140px at 50% 50%, rgba(239, 68, 68, 0.3), rgba(239, 68, 68, 0.05));
+        border-color: var(--danger);
+        box-shadow: 0 8px 32px rgba(239, 68, 68, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+        animation: recording-pulse 1.5s ease-in-out infinite;
+      }
+      
+      @keyframes recording-pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.1); }
+      }
+      
+      .status-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 16px;
+        margin-bottom: 24px;
+      }
+      
+      .status-item {
+        background: rgba(15, 15, 15, 0.6);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px;
+        text-align: center;
+        transition: all 0.3s ease;
+      }
+      
+      .status-item:hover {
+        border-color: var(--border-hover);
+        background: rgba(15, 15, 15, 0.8);
+      }
+      
+      .status-label {
+        font-size: 11px;
+        color: var(--text3);
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        margin-bottom: 8px;
+        font-weight: 600;
+      }
+      
+      .status-value {
+        font-size: 14px;
+        color: var(--text);
+        font-weight: 600;
+        font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+      }
+      
+      .audio-section {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 20px;
+        align-items: center;
+        margin-bottom: 24px;
+      }
+      
+      .waveform-container {
+        background: var(--bg3);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 20px;
+        position: relative;
+        overflow: hidden;
+      }
+      
+      .waveform-container::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, var(--primary), transparent);
+        opacity: 0.5;
+      }
+      
+      #wave-canvas {
+        width: 100%;
+        height: 80px;
+        background: transparent;
+        border-radius: 8px;
+      }
+      
+      .streaming-audio-status {
+        background: var(--bg3);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 20px;
+        width: 100%;
+      }
+      
+      .streaming-status {
+        font-size: 14px;
+        color: var(--text2);
+        margin-bottom: 16px;
+        font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+      }
+      
+      .streaming-visualizer {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 40px;
+      }
+      
+      .audio-bars {
+        display: flex;
+        gap: 4px;
+        align-items: flex-end;
+        height: 32px;
+      }
+      
+      .audio-bars .bar {
+        width: 4px;
+        background: linear-gradient(to top, var(--primary), var(--primary-hover));
+        border-radius: 2px;
+        transition: height 0.1s ease;
+        height: 4px;
+        opacity: 0.3;
+      }
+      
+      .audio-bars.active .bar {
+        opacity: 1;
+        animation: audioBarPulse 0.8s ease-in-out infinite alternate;
+      }
+      
+      .audio-bars .bar:nth-child(1) { animation-delay: 0s; }
+      .audio-bars .bar:nth-child(2) { animation-delay: 0.1s; }
+      .audio-bars .bar:nth-child(3) { animation-delay: 0.2s; }
+      .audio-bars .bar:nth-child(4) { animation-delay: 0.3s; }
+      .audio-bars .bar:nth-child(5) { animation-delay: 0.4s; }
+      
+      @keyframes audioBarPulse {
+        0% { height: 4px; }
+        50% { height: 16px; }
+        100% { height: 32px; }
+      }
+      
+      .audio-controls {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        align-items: center;
+      }
+      
+      .audio-player {
+        background: var(--bg3);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 16px;
+        width: 300px;
+      }
+      
+      #tts-audio {
+        width: 100%;
+        height: 60px;
+        border-radius: 8px;
+      }
+      
+      .speed-control {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+      }
+      
+      .speed-label {
+        font-size: 12px;
+        color: var(--text3);
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        font-weight: 600;
+      }
+      
+      #audio-speed {
+        background: var(--bg3);
+        border: 1px solid var(--border);
+        color: var(--text);
+        padding: 8px 12px;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.3s ease;
+      }
+
+      .toggle-row {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        background: var(--bg3);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 8px 12px;
+      }
+
+      .toggle-row label {
+        font-size: 12px;
+        color: var(--text3);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-weight: 600;
+      }
+      
+      #audio-speed:hover {
+        border-color: var(--border-hover);
+        background: rgba(15, 15, 15, 0.8);
+      }
+      
+      .meter-container {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 24px;
+      }
+      
+      .meter {
+        flex: 1;
+        height: 16px;
+        background: var(--bg3);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        overflow: hidden;
+        position: relative;
+      }
+      
+      .meter .bar {
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, var(--success), var(--primary), var(--warning));
+        transition: width 100ms ease;
+        border-radius: 999px;
+        position: relative;
+      }
+      
+      .meter .bar::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+        animation: shimmer 2s ease-in-out infinite;
+      }
+      
+      @keyframes shimmer {
+        0% { transform: translateX(-100%); }
+        100% { transform: translateX(100%); }
+      }
+      
+      .timer {
+        background: var(--bg3);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 16px;
+        font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--text);
+        min-width: 80px;
+        text-align: center;
+      }
+      
+      .debug-panel {
+        background: var(--bg3);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 20px;
+        margin-top: 24px;
+      }
+      
+      .debug-controls {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 20px;
+      }
+      
+      .btn {
+        background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(99, 102, 241, 0.05));
+        border: 1px solid var(--primary);
+        color: var(--text);
+        padding: 10px 16px;
+        border-radius: 10px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        font-size: 14px;
+      }
+      
+      .btn:hover {
+        background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(99, 102, 241, 0.1));
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+      }
+      
+      .btn.secondary {
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
+        border-color: var(--border);
+      }
+      
+      .btn.secondary:hover {
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.08));
+        border-color: var(--border-hover);
+      }
+      
+      .tokens-panel {
+        background: var(--bg3);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px;
+        margin-top: 20px;
+      }
+      
+      .tokens {
+        height: 200px;
+        overflow: auto;
+        background: var(--bg);
+        border: 1px dashed var(--border);
+        border-radius: 8px;
+        padding: 12px;
+        font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      
+      .history {
+        height: 300px;
+        overflow: auto;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 16px;
+      }
+      
+      .msg {
+        padding: 12px 16px;
+        border-radius: 12px;
+        margin: 8px 0;
+        max-width: 100%;
+        line-height: 1.5;
+        font-size: 14px;
+      }
+      
+      .msg.user {
+        background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(99, 102, 241, 0.05));
+        border: 1px solid rgba(99, 102, 241, 0.3);
+        align-self: flex-end;
+        margin-left: 20%;
+      }
+      
+      .msg.assistant {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--border);
+        margin-right: 20%;
+      }
+      
+      .msg.error {
+        background: rgba(239, 68, 68, 0.1);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+      }
+      
+      .msg.stt {
+        background: rgba(16, 185, 129, 0.1);
+        border: 1px solid rgba(16, 185, 129, 0.3);
+      }
+      
+      .msg.tts {
+        background: rgba(99, 102, 241, 0.1);
+        border: 1px solid rgba(99, 102, 241, 0.3);
+      }
+      
+      .typing {
+        font-size: 14px;
+        color: var(--text2);
+        margin-top: 12px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-style: italic;
+      }
+      
+      .typing .dots {
+        display: flex;
+        gap: 4px;
+      }
+      
+      .typing .dots i {
+        width: 6px;
+        height: 6px;
+        background: var(--primary);
+        border-radius: 50%;
+        opacity: 0.6;
+        animation: blink 1.4s infinite;
+      }
+      
+      .typing .dots i:nth-child(2) { animation-delay: 0.2s; }
+      .typing .dots i:nth-child(3) { animation-delay: 0.4s; }
+      
+      @keyframes blink {
+        0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+        40% { opacity: 1; transform: scale(1); }
+      }
+      
+      .progress {
+        font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+        font-size: 12px;
+        color: var(--text3);
+        background: var(--bg3);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 12px;
+        text-align: center;
+      }
+      
+      .hidden { display: none !important; }
+      
+      /* Responsive design */
+      @media (max-width: 768px) {
+        .container { padding: 16px 12px 32px; }
+        .header { padding: 20px 24px; }
+        .brand h1 { font-size: 24px; }
+        .main-content { grid-template-columns: 1fr; }
+        .has-debug .main-content { grid-template-columns: 1fr; }
+        .audio-section { grid-template-columns: 1fr; }
+        .audio-controls { flex-direction: row; justify-content: center; }
+        .status-grid { grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); }
+      }
+      
+      /* Scrollbar styling */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      
+      ::-webkit-scrollbar-track {
+        background: var(--bg3);
+        border-radius: 4px;
+      }
+      
+      ::-webkit-scrollbar-thumb {
+        background: var(--border);
+        border-radius: 4px;
+      }
+      
+      ::-webkit-scrollbar-thumb:hover {
+        background: var(--border-hover);
+      }
+
+      .streaming-info {
+        margin-top: 12px;
+        font-size: 12px;
+        color: var(--text3);
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        text-align: center;
+      }
+      
+      .streaming-info > div {
+        background: rgba(15, 15, 15, 0.6);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 6px 8px;
+        font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+        font-size: 11px;
+      }
+      
+      .streaming-info > div span {
+        font-weight: 600;
+      }
+      
+      /* Enhanced audio bars animation */
+      .audio-bars.active .bar {
+        opacity: 1;
+        animation: audioBarPulse 0.8s ease-in-out infinite alternate;
+      }
+      
+      .audio-bars .bar {
+        transition: all 0.2s ease;
+      }
+      
+      /* Streaming status animations */
+      @keyframes buffering-pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+      }
+      
+      .streaming-status[style*="warning"] {
+        animation: buffering-pulse 1.5s ease-in-out infinite;
       }
     </style>
   </head>
@@ -123,9 +724,8 @@
     <div class="container">
       <div class="header">
         <div class="brand">
-          <h1>Voice Generator Studio · Murf AI</h1>
-          <!-- Minimal: remove dev subtitle/session from header for Clean Mode -->
-          <span id="sid" class="mono hidden">{{ session_id }}</span>
+          <h1>🎙️ Voice Studio</h1>
+          <p>AI-Powered Voice Generation with Murf</p>
         </div>
         <div class="status">
           <div id="conn-dot" class="dot"></div>
@@ -133,58 +733,62 @@
         </div>
       </div>
 
-      <div class="grid">
+      <div class="main-content">
         <div class="card">
-          <h3 class="section-title">Conversation</h3>
-          <div class="row" style="margin-bottom:14px; align-items:center;">
-            <input id="input-text" type="text" placeholder="Type a message to the assistant..." />
-            <button id="btn-rec" class="mic-btn" title="Start Recording" aria-label="Start Recording">🎤</button>
+          <h3 class="section-title">Voice Conversation</h3>
+          
+          <div class="controls-section">
+            <button id="btn-rec" class="mic-btn" title="Start Recording" aria-label="Start Recording">
+              🎤
+            </button>
           </div>
-          <div id="status-row" class="row" style="margin-bottom:10px">
-            <span id="mode-pill" class="pill">Mode: <b class="mono">streaming</b></span>
-            <span id="rec-pill" class="pill">Mic: <b class="mono">idle</b></span>
-            <span id="stt-badge" class="pill">Idle</span>
-            <span id="murf-pill" class="pill">Murf: idle</span>
-            <span id="vad-pill" class="pill">VAD: silence</span>
+          
+          <div class="meter-container">
+            <div class="meter" id="mic-meter">
+              <div id="meter-bar" class="bar"></div>
+            </div>
+            <div class="timer" id="mic-timer">00:00</div>
           </div>
-          <div class="row" style="margin-bottom:10px">
-            <div class="meter" id="mic-meter"><div id="meter-bar" class="bar"></div></div>
-            <span id="mic-timer" class="pill">00:00</span>
-          </div>
-          <div class="row" style="margin-bottom:10px; align-items:center; gap:14px;">
-            <canvas id="wave-canvas" height="64" style="flex:1; background:#0f0f0f; border:1px solid rgba(255,255,255,0.06); border-radius:8px"></canvas>
-            <audio id="tts-audio" controls preload="none" style="flex:1; height:64px"></audio>
-            <select id="audio-speed" class="toggle">
-              <option value="0.75">0.75x</option>
-              <option value="1" selected>1.0x</option>
-              <option value="1.25">1.25x</option>
-              <option value="1.5">1.5x</option>
-            </select>
-          </div>
-          <div class="row">
-            <div id="tokens-wrap" class="hidden" style="flex:1">
-              <div class="pill">LLM Tokens</div>
-              <div id="tokens" class="tokens mono"></div>
-              <div id="typing" class="typing" style="display:none">Assistant is typing <span class="dots"><i></i><i></i><i></i></span></div>
+          
+          <div class="audio-section">
+            <div class="waveform-container">
+              <canvas id="wave-canvas" height="80"></canvas>
             </div>
           </div>
-        </div>
-
-        <div id="debug-card" class="card hidden">
-          <h3 class="section-title">Debug</h3>
-          <div class="row" style="margin-bottom:10px">
-            <button id="btn-toggle-tokens">Toggle Tokens</button>
-            <button id="btn-echo">Echo Test</button>
+          
+          <!-- Streaming Audio Status -->
+          <div class="audio-section">
+            <div class="streaming-audio-status">
+              <div class="section-title">🔊 Streaming Audio</div>
+              <div id="streaming-status" class="streaming-status">Waiting for audio...</div>
+              <div class="streaming-visualizer">
+                <div id="audio-bars" class="audio-bars">
+                  <div class="bar"></div>
+                  <div class="bar"></div>
+                  <div class="bar"></div>
+                  <div class="bar"></div>
+                  <div class="bar"></div>
+                </div>
+              </div>
+              <div class="streaming-info" style="margin-top: 12px; font-size: 12px; color: var(--text3);">
+                <div>Quality: <span id="quality-indicator">-</span></div>
+                <div>Buffer: <span id="buffer-indicator">-</span></div>
+                <div>Dropouts: <span id="dropout-indicator">-</span></div>
+              </div>
+            </div>
           </div>
-          <div class="pill">History</div>
+          
+          <!-- Hidden audio element for fallback playback -->
+          <audio id="tts-audio" preload="none" style="display:none"></audio>
+          
+          <div class="section-title">Conversation History</div>
           <div id="history" class="history"></div>
-          <div style="height:10px"></div>
-          <div class="pill">Streaming Progress</div>
-          <div id="progress" class="mono muted">chunks=0 bytes=0 duration=0s</div>
+          
+          <div class="section-title">Streaming Progress</div>
+          <div id="progress" class="progress">chunks=0 bytes=0 duration=0s</div>
+          
         </div>
       </div>
-
-      <!-- Footer removed for minimal Clean Mode -->
     </div>
 
     <script>
